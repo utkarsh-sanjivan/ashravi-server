@@ -1,0 +1,170 @@
+{
+  "definition": {
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Node.js Server API - Layered Architecture",
+      "version": "1.0.0",
+      "description": "A comprehensive Node.js server API with layered architecture following best practices.\n\n## Features\n- **Layered Architecture**: Clear separation of routes, controllers, services, and models\n- **Security**: JWT authentication, input validation, rate limiting\n- **Performance**: Redis caching, database indexing, compression\n- **Monitoring**: Comprehensive logging and health checks\n- **Documentation**: Auto-generated API documentation\n\n## Architecture\n- **Routes**: Define endpoints and middleware\n- **Controllers**: Handle HTTP requests/responses\n- **Services**: Business logic layer\n- **Models**: Data layer with Mongoose\n- **Middleware**: Cross-cutting concerns\n- **Validations**: Input validation schemas",
+      "contact": {
+        "name": "API Support",
+        "email": "support@example.com",
+        "url": "https://example.com/support"
+      },
+      "license": {
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+      }
+    },
+    "servers": [
+      {
+        "url":"https://your-production-domain.com/api/v1",
+        "description": "Production server"
+      },
+      {
+        "url": "http://localhost:3000/api/v1",
+        "description":  "Development server"
+      }
+    ],
+    "components": {
+      "securitySchemes": {
+        "bearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT",
+          "description": "JWT token for authentication"
+        }
+      },
+      "schemas": {
+        "Error": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "boolean",
+              "example": false
+            },
+            "error": {
+              "type": "string",
+              "description": "Error message"
+            },
+            "message": {
+              "type": "string",
+              "description": "Detailed error message"
+            },
+            "code": {
+              "type": "string",
+              "description": "Error code for programmatic handling"
+            },
+            "details": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Validation error details"
+            }
+          }
+        },
+        "SuccessResponse": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "boolean",
+              "example": true
+            },
+            "message": {
+              "type": "string",
+              "description": "Success message"
+            },
+            "data": {
+              "type": "object",
+              "description": "Response data"
+            }
+          }
+        }
+      },
+      "responses": {
+        "BadRequest": {
+          "description": "Bad request",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "Unauthorized": {
+          "description": "Authentication required",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "Forbidden": {
+          "description": "Insufficient permissions",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "NotFound": {
+          "description": "Resource not found",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "TooManyRequests": {
+          "description": "Rate limit exceeded",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "InternalServerError": {
+          "description": "Internal server error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tags": [
+      {
+        "name": "Authentication",
+        "description": "User authentication and profile management"
+      },
+      {
+        "name": "Users",
+        "description": "User management operations (admin/moderator only)"
+      }
+    ]
+  },
+  "apis": [
+    "./src/api-docs/*.js",
+    "./src/routes/*.js"
+  ]
+}
