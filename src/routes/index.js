@@ -4,7 +4,7 @@ const swaggerUi = require('swagger-ui-express');
 
 // Import route modules
 const authRoutes = require('./auth');
-const userRoutes = require('./users');
+const childrenRoutes = require('./children');
 
 // Import utilities
 const logger = require('../utils/logger');
@@ -55,7 +55,7 @@ if (process.env.NODE_ENV === 'development' || process.env.API_DOCS_ENABLED === '
 
 // API Routes
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
+router.use('/children', childrenRoutes);
 
 // API Information endpoint
 router.get('/', (req, res) => {
