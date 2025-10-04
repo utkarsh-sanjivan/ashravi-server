@@ -7,29 +7,24 @@
  *       properties:
  *         _id:
  *           type: string
- *           example: 650f9598f1f3d2b99f5fe1e1
  *         name:
  *           type: string
- *           example: John Doe
  *         age:
  *           type: integer
- *           minimum: 0
- *           maximum: 18
- *           example: 10
  *         gender:
  *           type: string
- *           example: male
  *         grade:
  *           type: string
- *           example: 5TH
  *         parentId:
  *           type: string
- *           example: 650f9598f1f3d2b99f5fedf0
  *         courseIds:
  *           type: array
  *           items:
  *             type: string
- *           example: ["650f9598f1f3d2b99f5feaa1", "650f9598f1f3d2b99f5feaa2"]
+ *         educationData:
+ *           $ref: '#/components/schemas/ChildEducation'
+ *         nutritionData:
+ *           $ref: '#/components/schemas/ChildNutrition'
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -37,34 +32,51 @@
  *           type: string
  *           format: date-time
  * 
- *     ChildCreate:
+ *     ChildSummary:
  *       type: object
- *       required:
- *         - name
- *         - age
- *         - gender
- *         - grade
- *         - parentId
  *       properties:
+ *         id:
+ *           type: string
  *         name:
  *           type: string
- *           example: John Doe
  *         age:
  *           type: integer
- *           example: 10
  *         gender:
  *           type: string
- *           example: male
  *         grade:
  *           type: string
- *           example: 5TH
  *         parentId:
  *           type: string
- *           example: 650f9598f1f3d2b99f5fedf0
- *         courseIds:
- *           type: array
- *           items:
- *             type: string
+ *         courseCount:
+ *           type: integer
+ *         hasEducationData:
+ *           type: boolean
+ *         hasNutritionData:
+ *           type: boolean
+ *         education:
+ *           type: object
+ *           properties:
+ *             recordCount:
+ *               type: integer
+ *             latestGrade:
+ *               type: string
+ *             currentAverage:
+ *               type: number
+ *             suggestionCount:
+ *               type: integer
+ *             highPrioritySuggestions:
+ *               type: integer
+ *         nutrition:
+ *           type: object
+ *           properties:
+ *             recordCount:
+ *               type: integer
+ *             currentBMI:
+ *               type: number
+ *             recommendationCount:
+ *               type: integer
+ *             criticalRecommendations:
+ *               type: integer
  * 
  * /api/v1/children:
  *   post:
@@ -72,19 +84,39 @@
  *     tags: [Children]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: initializeRelated
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Initialize empty education and nutrition records
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ChildCreate'
+ *             type: object
+ *             required:
+ *               - name
+ *               - age
+ *               - gender
+ *               - grade
+ *               - parentId
+ *             properties:
+ *               name:
+ *                 type: string
+ *               age:
+ *                 type: integer
+ *               gender:
+ *                 type: string
+ *               grade:
+ *                 type: string
+ *               parentId:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Child created successfully
- *       400:
- *         $ref: '#/components/responses/BadRequest'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
  * 
  * /api/v1/children/by-parent:
  *   get:
@@ -108,27 +140,15 @@
  *         schema:
  *           type: integer
  *           default: 0
- *     responses:
- *       200:
- *         description: List of children
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- * 
- * /api/v1/children/count:
- *   get:
- *     summary: Count children by parent ID
- *     tags: [Children]
- *     security:
- *       - bearerAuth: []
- *     parameters:
  *       - in: query
- *         name: parentId
- *         required: true
+ *         name: includeRelated
  *         schema:
- *           type: string
+ *           type: boolean
+ *           default: false
+ *         description: Include education and nutrition data
  *     responses:
  *       200:
- *         description: Count of children
+ *         description: List of children with optional related data
  * 
  * /api/v1/children/{id}:
  *   get:
@@ -142,44 +162,18 @@
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: includeRelated
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Include education and nutrition data
  *     responses:
  *       200:
  *         description: Child retrieved successfully
- *       404:
- *         $ref: '#/components/responses/NotFound'
- * 
- *   patch:
- *     summary: Update child
- *     tags: [Children]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               age:
- *                 type: integer
- *               gender:
- *                 type: string
- *               grade:
- *                 type: string
- *     responses:
- *       200:
- *         description: Child updated successfully
  * 
  *   delete:
- *     summary: Delete child
+ *     summary: Delete child (cascades to education and nutrition)
  *     tags: [Children]
  *     security:
  *       - bearerAuth: []
@@ -193,13 +187,14 @@
  *         name: parentId
  *         schema:
  *           type: string
+ *         description: Parent ID to unlink child
  *     responses:
  *       200:
- *         description: Child deleted successfully
+ *         description: Child and related data deleted successfully
  * 
  * /api/v1/children/{id}/summary:
  *   get:
- *     summary: Get child summary
+ *     summary: Get child summary with education and nutrition insights
  *     tags: [Children]
  *     security:
  *       - bearerAuth: []
@@ -211,34 +206,16 @@
  *           type: string
  *     responses:
  *       200:
- *         description: Child summary retrieved
- * 
- * /api/v1/children/{id}/courses:
- *   post:
- *     summary: Add courses to child
- *     tags: [Children]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               courseIds:
- *                 type: array
- *                 items:
- *                   type: string
- *     responses:
- *       200:
- *         description: Courses added successfully
+ *         description: Child summary with insights
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/ChildSummary'
  */
 
 module.exports = {};

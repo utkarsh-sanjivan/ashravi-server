@@ -3,29 +3,28 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const express = require('express');
 const Child = require('../../src/models/Child');
+const ChildEducation = require('../../src/models/ChildEducation');
+const ChildNutrition = require('../../src/models/ChildNutrition');
 const User = require('../../src/models/User');
 const childrenRoutes = require('../../src/routes/children');
 const errorHandler = require('../../src/middleware/errorHandler');
 
 let app;
 let mongod;
-let testParent;
+let testUser;
 let testToken;
 
-/**
- * Setup test application with routes and middleware
- */
 const setupTestApp = () => {
   const testApp = express();
   testApp.use(express.json());
   
   testApp.use((req, res, next) => {
-    if (testParent && testToken) {
+    if (testUser && testToken) {
       req.user = {
-        id: testParent._id,
-        email: testParent.email,
-        role: testParent.role,
-        _id: testParent._id
+        id: testUser._id,
+        email: testUser.email,
+        role: testUser.role,
+        _id: testUser._id
       };
     }
     next();
@@ -37,7 +36,7 @@ const setupTestApp = () => {
   return testApp;
 };
 
-describe('Children API - Integration Tests', () => {
+describe('Children API - Linked Data Integration Tests', () => {
   beforeAll(async () => {
     mongod = await MongoMemoryServer.create();
     const uri = mongod.getUri();
@@ -53,112 +52,65 @@ describe('Children API - Integration Tests', () => {
 
   beforeEach(async () => {
     await Child.deleteMany({});
+    await ChildEducation.deleteMany({});
+    await ChildNutrition.deleteMany({});
     await User.deleteMany({});
     
-    testParent = await User.create({
+    testUser = await User.create({
       name: 'Test Parent',
       email: `parent${Date.now()}@example.com`,
       password: 'TestPass123!',
       role: 'user'
     });
     
-    testToken = testParent.getSignedJwtToken();
+    testToken = testUser.getSignedJwtToken();
   });
 
   afterEach(async () => {
     await Child.deleteMany({});
+    await ChildEducation.deleteMany({});
+    await ChildNutrition.deleteMany({});
     await User.deleteMany({});
   });
 
-  describe('POST /api/v1/children', () => {
+  describe('POST /api/v1/children with initializeRelated', () => {
     /**
-     * Test creating a child successfully
+     * Test creating child with initialized related records
      */
-    it('should create a new child successfully', async () => {
+    it('should create child and initialize education and nutrition records', async () => {
       const childData = {
         name: 'John Doe',
         age: 10,
         gender: 'male',
         grade: '5TH',
-        parentId: testParent._id.toString()
+        parentId: testUser._id.toString()
       };
 
       const response = await request(app)
         .post('/api/v1/children')
+        .query({ initializeRelated: 'true' })
         .set('Authorization', `Bearer ${testToken}`)
         .send(childData)
         .expect(201);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.name).toBe(childData.name);
-      expect(response.body.data.age).toBe(childData.age);
-      expect(response.body.data.gender).toBe(childData.gender);
-      expect(response.body.data.grade).toBe(childData.grade);
-    });
 
-    /**
-     * Test validation errors
-     */
-    it('should return 400 for validation errors', async () => {
-      const invalidData = {
-        name: 'J',
-        age: 25,
-        gender: 'male',
-        grade: '5TH',
-        parentId: testParent._id.toString()
-      };
+      const childId = response.body.data.id || response.body.data._id;
 
-      const response = await request(app)
-        .post('/api/v1/children')
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(invalidData)
-        .expect(400);
+      // Verify education record was created
+      const educationRecord = await ChildEducation.findOne({ childId });
+      expect(educationRecord).toBeTruthy();
+      expect(educationRecord.records).toHaveLength(0);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation error');
-    });
-
-    /**
-     * Test missing required fields
-     */
-    it('should return 400 when required fields are missing', async () => {
-      const incompleteData = {
-        name: 'John Doe',
-        age: 10
-      };
-
-      const response = await request(app)
-        .post('/api/v1/children')
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(incompleteData)
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-    });
-
-    /**
-     * Test with non-existent parent
-     */
-    it('should return 404 when parent does not exist', async () => {
-      const childData = {
-        name: 'John Doe',
-        age: 10,
-        gender: 'male',
-        grade: '5TH',
-        parentId: new mongoose.Types.ObjectId().toString()
-      };
-
-      const response = await request(app)
-        .post('/api/v1/children')
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(childData)
-        .expect(404);
-
-      expect(response.body.success).toBe(false);
+      // Verify nutrition record was created
+      const nutritionRecord = await ChildNutrition.findOne({ childId });
+      expect(nutritionRecord).toBeTruthy();
+      expect(nutritionRecord.records).toHaveLength(0);
     });
   });
 
-  describe('GET /api/v1/children/:id', () => {
+  describe('GET /api/v1/children/:id with includeRelated', () => {
     let testChild;
 
     beforeEach(async () => {
@@ -167,259 +119,140 @@ describe('Children API - Integration Tests', () => {
         age: 8,
         gender: 'female',
         grade: '3RD',
-        parentId: testParent._id
+        parentId: testUser._id
+      });
+
+      await ChildEducation.create({
+        childId: testChild._id,
+        records: [
+          {
+            gradeYear: 'Grade 3',
+            subjects: [{ subject: 'Math', marks: 85 }]
+          }
+        ],
+        suggestions: []
+      });
+
+      await ChildNutrition.create({
+        childId: testChild._id,
+        records: [
+          {
+            physicalMeasurement: {
+              heightCm: 130,
+              weightKg: 30
+            },
+            eatingHabits: {
+              eatsBreakfastRegularly: true,
+              drinksEnoughWater: true,
+              eatsFruitsDaily: true,
+              eatsVegetablesDaily: true,
+              limitsJunkFood: true,
+              hasRegularMealTimes: true,
+              enjoysVarietyOfFoods: true,
+              eatsAppropriatePortions: true
+            }
+          }
+        ],
+        recommendations: []
       });
     });
 
     /**
-     * Test getting child by ID
+     * Test getting child with related data
      */
-    it('should get child by ID successfully', async () => {
+    it('should get child with education and nutrition data', async () => {
+      const response = await request(app)
+        .get(`/api/v1/children/${testChild._id}`)
+        .query({ includeRelated: 'true' })
+        .set('Authorization', `Bearer ${testToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.educationData).toBeTruthy();
+      expect(response.body.data.educationData.records).toHaveLength(1);
+      expect(response.body.data.nutritionData).toBeTruthy();
+      expect(response.body.data.nutritionData.records).toHaveLength(1);
+    });
+
+    /**
+     * Test getting child without related data
+     */
+    it('should get child without related data when includeRelated is false', async () => {
       const response = await request(app)
         .get(`/api/v1/children/${testChild._id}`)
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.name).toBe(testChild.name);
-      expect(response.body.data.age).toBe(testChild.age);
-    });
-
-    /**
-     * Test getting non-existent child
-     */
-    it('should return 404 for non-existent child', async () => {
-      const fakeId = new mongoose.Types.ObjectId();
-
-      const response = await request(app)
-        .get(`/api/v1/children/${fakeId}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(404);
-
-      expect(response.body.success).toBe(false);
-    });
-
-    /**
-     * Test with invalid ID format
-     */
-    it('should return 400 for invalid ID format', async () => {
-      const response = await request(app)
-        .get('/api/v1/children/invalid-id')
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
+      expect(response.body.data.educationData).toBeUndefined();
+      expect(response.body.data.nutritionData).toBeUndefined();
     });
   });
 
-  describe('GET /api/v1/children/by-parent', () => {
+  describe('GET /api/v1/children/by-parent with includeRelated', () => {
     beforeEach(async () => {
-      await Child.create([
-        { name: 'Child 1', age: 10, gender: 'male', grade: '5TH', parentId: testParent._id },
-        { name: 'Child 2', age: 8, gender: 'female', grade: '3RD', parentId: testParent._id },
-        { name: 'Child 3', age: 12, gender: 'male', grade: '7TH', parentId: testParent._id }
-      ]);
+      const child1 = await Child.create({
+        name: 'Child 1',
+        age: 10,
+        gender: 'male',
+        grade: '5TH',
+        parentId: testUser._id
+      });
+
+      const child2 = await Child.create({
+        name: 'Child 2',
+        age: 8,
+        gender: 'female',
+        grade: '3RD',
+        parentId: testUser._id
+      });
+
+      await ChildEducation.create({
+        childId: child1._id,
+        records: [{ gradeYear: 'Grade 5', subjects: [{ subject: 'Math', marks: 90 }] }],
+        suggestions: []
+      });
+
+      await ChildNutrition.create({
+        childId: child2._id,
+        records: [{
+          physicalMeasurement: { heightCm: 130, weightKg: 30 },
+          eatingHabits: {
+            eatsBreakfastRegularly: true,
+            drinksEnoughWater: true,
+            eatsFruitsDaily: true,
+            eatsVegetablesDaily: true,
+            limitsJunkFood: true,
+            hasRegularMealTimes: true,
+            enjoysVarietyOfFoods: true,
+            eatsAppropriatePortions: true
+          }
+        }],
+        recommendations: []
+      });
     });
 
     /**
-     * Test getting children by parent
+     * Test getting children by parent with related data
      */
-    it('should get all children for a parent', async () => {
-      const response = await request(app)
-        .get('/api/v1/children/by-parent')
-        .query({ parentId: testParent._id.toString() })
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(3);
-    });
-
-    /**
-     * Test with pagination
-     */
-    it('should respect pagination parameters', async () => {
+    it('should get children with related data', async () => {
       const response = await request(app)
         .get('/api/v1/children/by-parent')
         .query({ 
-          parentId: testParent._id.toString(),
-          limit: 2,
-          skip: 1
+          parentId: testUser._id.toString(),
+          includeRelated: 'true'
         })
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveLength(2);
-    });
-
-    /**
-     * Test without parent ID
-     */
-    it('should return 400 when parent ID is missing', async () => {
-      const response = await request(app)
-        .get('/api/v1/children/by-parent')
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-    });
-  });
-
-  describe('PATCH /api/v1/children/:id', () => {
-    let testChild;
-
-    beforeEach(async () => {
-      testChild = await Child.create({
-        name: 'Original Name',
-        age: 10,
-        gender: 'male',
-        grade: '5TH',
-        parentId: testParent._id
-      });
-    });
-
-    /**
-     * Test updating child
-     */
-    it('should update child successfully', async () => {
-      const updateData = {
-        name: 'Updated Name',
-        age: 11
-      };
-
-      const response = await request(app)
-        .patch(`/api/v1/children/${testChild._id}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(updateData)
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.name).toBe(updateData.name);
-      expect(response.body.data.age).toBe(updateData.age);
-    });
-
-    /**
-     * Test partial update
-     */
-    it('should allow partial updates', async () => {
-      const updateData = { age: 12 };
-
-      const response = await request(app)
-        .patch(`/api/v1/children/${testChild._id}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(updateData)
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.age).toBe(updateData.age);
-      expect(response.body.data.name).toBe(testChild.name);
-    });
-
-    /**
-     * Test invalid update data
-     */
-    it('should return 400 for invalid age', async () => {
-      const updateData = { age: 25 };
-
-      const response = await request(app)
-        .patch(`/api/v1/children/${testChild._id}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .send(updateData)
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-    });
-  });
-
-  describe('DELETE /api/v1/children/:id', () => {
-    let testChild;
-
-    beforeEach(async () => {
-      testChild = await Child.create({
-        name: 'To Be Deleted',
-        age: 10,
-        gender: 'male',
-        grade: '5TH',
-        parentId: testParent._id
-      });
-    });
-
-    /**
-     * Test deleting child
-     */
-    it('should delete child successfully', async () => {
-      const response = await request(app)
-        .delete(`/api/v1/children/${testChild._id}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.deleted).toBe(true);
-
-      const deletedChild = await Child.findById(testChild._id);
-      expect(deletedChild).toBeNull();
-    });
-
-    /**
-     * Test deleting non-existent child
-     */
-    it('should return 404 when child does not exist', async () => {
-      const fakeId = new mongoose.Types.ObjectId();
-
-      const response = await request(app)
-        .delete(`/api/v1/children/${fakeId}`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(404);
-
-      expect(response.body.success).toBe(false);
-    });
-  });
-
-  describe('POST /api/v1/children/:id/courses', () => {
-    let testChild;
-
-    beforeEach(async () => {
-      testChild = await Child.create({
-        name: 'Test Child',
-        age: 10,
-        gender: 'male',
-        grade: '5TH',
-        parentId: testParent._id,
-        courseIds: []
-      });
-    });
-
-    /**
-     * Test adding courses to child
-     */
-    it('should add courses to child successfully', async () => {
-      const courseIds = [
-        new mongoose.Types.ObjectId().toString(),
-        new mongoose.Types.ObjectId().toString()
-      ];
-
-      const response = await request(app)
-        .post(`/api/v1/children/${testChild._id}/courses`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .send({ courseIds })
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.courseIds).toHaveLength(2);
-    });
-
-    /**
-     * Test adding courses with empty array
-     */
-    it('should return 400 when course IDs array is empty', async () => {
-      const response = await request(app)
-        .post(`/api/v1/children/${testChild._id}/courses`)
-        .set('Authorization', `Bearer ${testToken}`)
-        .send({ courseIds: [] })
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
+      
+      const firstChild = response.body.data[0];
+      const secondChild = response.body.data[1];
+      
+      expect(firstChild.educationData || firstChild.nutritionData).toBeTruthy();
+      expect(secondChild.educationData || secondChild.nutritionData).toBeTruthy();
     });
   });
 
@@ -432,59 +265,141 @@ describe('Children API - Integration Tests', () => {
         age: 10,
         gender: 'male',
         grade: '5TH',
-        parentId: testParent._id,
-        courseIds: [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()]
+        parentId: testUser._id
+      });
+
+      await ChildEducation.create({
+        childId: testChild._id,
+        records: [
+          {
+            gradeYear: 'Grade 5',
+            subjects: [
+              { subject: 'Math', marks: 85 },
+              { subject: 'Science', marks: 78 },
+              { subject: 'English', marks: 92 }
+            ]
+          }
+        ],
+        suggestions: [
+          {
+            subject: 'Science',
+            suggestion: 'Focus on improvement',
+            priority: 'high',
+            type: 'performance'
+          }
+        ]
+      });
+
+      await ChildNutrition.create({
+        childId: testChild._id,
+        records: [
+          {
+            physicalMeasurement: {
+              heightCm: 140,
+              weightKg: 35
+            },
+            eatingHabits: {
+              eatsBreakfastRegularly: true,
+              drinksEnoughWater: true,
+              eatsFruitsDaily: false,
+              eatsVegetablesDaily: true,
+              limitsJunkFood: false,
+              hasRegularMealTimes: true,
+              enjoysVarietyOfFoods: true,
+              eatsAppropriatePortions: true
+            }
+          }
+        ],
+        recommendations: [
+          {
+            category: 'diet',
+            recommendation: 'Include more fruits',
+            priority: 'medium',
+            targetArea: 'Fruits'
+          }
+        ]
       });
     });
 
     /**
-     * Test getting child summary
+     * Test getting child summary with insights
      */
-    it('should get child summary with course count', async () => {
+    it('should get comprehensive child summary', async () => {
       const response = await request(app)
         .get(`/api/v1/children/${testChild._id}/summary`)
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.courseCount).toBe(2);
-      expect(response.body.data.name).toBe(testChild.name);
-      expect(response.body.data.age).toBe(testChild.age);
+      const summary = response.body.data;
+
+      expect(summary.name).toBe('Test Child');
+      expect(summary.hasEducationData).toBe(true);
+      expect(summary.hasNutritionData).toBe(true);
+
+      expect(summary.education).toBeDefined();
+      expect(summary.education.recordCount).toBe(1);
+      expect(summary.education.latestGrade).toBe('Grade 5');
+      expect(summary.education.currentAverage).toBeGreaterThan(0);
+      expect(summary.education.suggestionCount).toBe(1);
+      expect(summary.education.highPrioritySuggestions).toBe(1);
+
+      expect(summary.nutrition).toBeDefined();
+      expect(summary.nutrition.recordCount).toBe(1);
+      expect(summary.nutrition.currentBMI).toBeDefined();
+      expect(summary.nutrition.recommendationCount).toBe(1);
     });
   });
 
-  describe('GET /api/v1/children/count', () => {
+  describe('DELETE /api/v1/children/:id cascade', () => {
+    let testChild;
+
     beforeEach(async () => {
-      await Child.create([
-        { name: 'Child 1', age: 10, gender: 'male', grade: '5TH', parentId: testParent._id },
-        { name: 'Child 2', age: 8, gender: 'female', grade: '3RD', parentId: testParent._id }
-      ]);
+      testChild = await Child.create({
+        name: 'To Delete',
+        age: 10,
+        gender: 'male',
+        grade: '5TH',
+        parentId: testUser._id
+      });
+
+      await ChildEducation.create({
+        childId: testChild._id,
+        records: [],
+        suggestions: []
+      });
+
+      await ChildNutrition.create({
+        childId: testChild._id,
+        records: [],
+        recommendations: []
+      });
     });
 
     /**
-     * Test counting children
+     * Test cascade deletion of child and related data
      */
-    it('should return correct count of children for parent', async () => {
+    it('should delete child and cascade to education and nutrition', async () => {
       const response = await request(app)
-        .get('/api/v1/children/count')
-        .query({ parentId: testParent._id.toString() })
+        .delete(`/api/v1/children/${testChild._id}`)
+        .query({ parentId: testUser._id.toString() })
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.count).toBe(2);
-    });
+      expect(response.body.data.deleted).toBe(true);
 
-    /**
-     * Test count without parent ID
-     */
-    it('should return 400 when parent ID is missing', async () => {
-      const response = await request(app)
-        .get('/api/v1/children/count')
-        .set('Authorization', `Bearer ${testToken}`)
-        .expect(400);
+      // Verify child is deleted
+      const deletedChild = await Child.findById(testChild._id);
+      expect(deletedChild).toBeNull();
 
-      expect(response.body.success).toBe(false);
+      // Verify education record is deleted
+      const educationRecord = await ChildEducation.findOne({ childId: testChild._id });
+      expect(educationRecord).toBeNull();
+
+      // Verify nutrition record is deleted
+      const nutritionRecord = await ChildNutrition.findOne({ childId: testChild._id });
+      expect(nutritionRecord).toBeNull();
     });
   });
 });

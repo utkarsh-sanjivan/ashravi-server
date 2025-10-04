@@ -1,15 +1,18 @@
 const childRepository = require('../repositories/childRepository');
+const childEducationRepository = require('../repositories/childEducationRepository');
+const childNutritionRepository = require('../repositories/childNutritionRepository');
+const { calculateBMI } = require('../utils/bmiUtils');
 const User = require('../models/User');
 const logger = require('../utils/logger');
-const mongoose = require('mongoose');
 
 /**
- * Create a new child
+ * Create a new child with optional initialization of related data
  * 
  * @params {childData}: object - Child creation data
- * @returns Created child object
+ * @params {initializeRelated}: boolean - Whether to initialize education and nutrition records
+ * @returns Created child object with related data
  */
-const createChild = async (childData) => {
+const createChild = async (childData, initializeRelated = false) => {
   try {
     const { parentId } = childData;
 
@@ -39,9 +42,32 @@ const createChild = async (childData) => {
     }
 
     const childId = createdChild.id || createdChild._id;
+    
+    // Link child to parent
     if (childId) {
       await linkChildToParent(parentId, childId);
       logger.info('Successfully created and linked child to parent', { childId, parentId });
+    }
+
+    // Initialize related records if requested
+    if (initializeRelated && childId) {
+      try {
+        await Promise.all([
+          childEducationRepository.createEducationRecord({
+            childId,
+            records: [],
+            suggestions: []
+          }),
+          childNutritionRepository.createNutritionRecord({
+            childId,
+            records: [],
+            recommendations: []
+          })
+        ]);
+        logger.info('Initialized related education and nutrition records', { childId });
+      } catch (error) {
+        logger.warn('Failed to initialize related records', { childId, error: error.message });
+      }
     }
 
     return createdChild;
@@ -52,15 +78,33 @@ const createChild = async (childData) => {
 };
 
 /**
- * Get child by ID
+ * Get child by ID with optional population of related data
  * 
  * @params {childId}: string - Child ID
- * @returns Child object or null
+ * @params {includeRelated}: boolean - Whether to include education and nutrition data
+ * @returns Child object with optional related data
  */
-const getChild = async (childId) => {
+const getChild = async (childId, includeRelated = false) => {
   try {
     if (!childId) return null;
-    return await childRepository.getChild(childId);
+    
+    const child = await childRepository.getChild(childId);
+    
+    if (!child || !includeRelated) {
+      return child;
+    }
+
+    // Fetch related data in parallel
+    const [educationData, nutritionData] = await Promise.all([
+      childEducationRepository.getByChildId(childId),
+      childNutritionRepository.getByChildId(childId)
+    ]);
+
+    return {
+      ...child,
+      educationData: educationData || null,
+      nutritionData: nutritionData || null
+    };
   } catch (error) {
     logger.error('Error retrieving child', { childId, error: error.message });
     throw error;
@@ -68,13 +112,14 @@ const getChild = async (childId) => {
 };
 
 /**
- * Get child with validation (throws if not found)
+ * Get child with validation and optional related data
  * 
  * @params {childId}: string - Child ID
+ * @params {includeRelated}: boolean - Whether to include related data
  * @returns Child object
  */
-const getChildWithValidation = async (childId) => {
-  const child = await getChild(childId);
+const getChildWithValidation = async (childId, includeRelated = false) => {
+  const child = await getChild(childId, includeRelated);
   if (!child) {
     const error = new Error(`Child with ID ${childId} not found`);
     error.statusCode = 404;
@@ -85,14 +130,15 @@ const getChildWithValidation = async (childId) => {
 };
 
 /**
- * Get children by parent ID
+ * Get children by parent ID with optional related data
  * 
  * @params {parentId}: string - Parent ID
  * @params {limit}: number - Max results
  * @params {skip}: number - Skip count
- * @returns Array of children
+ * @params {includeRelated}: boolean - Whether to include related data
+ * @returns Array of children with optional related data
  */
-const getChildrenByParent = async (parentId, limit = 100, skip = 0) => {
+const getChildrenByParent = async (parentId, limit = 100, skip = 0, includeRelated = false) => {
   try {
     if (!parentId) return [];
 
@@ -104,20 +150,31 @@ const getChildrenByParent = async (parentId, limit = 100, skip = 0) => {
       throw error;
     }
 
-    return await childRepository.getChildrenByParent(parentId, limit, skip);
+    const children = await childRepository.getChildrenByParent(parentId, limit, skip);
+    
+    if (!includeRelated || children.length === 0) {
+      return children;
+    }
+
+    // Fetch all related data in parallel
+    const childIds = children.map(c => c._id || c.id);
+    const [educationRecords, nutritionRecords] = await Promise.all([
+      Promise.all(childIds.map(id => childEducationRepository.getByChildId(id))),
+      Promise.all(childIds.map(id => childNutritionRepository.getByChildId(id)))
+    ]);
+
+    // Map related data to children
+    return children.map((child, index) => ({
+      ...child,
+      educationData: educationRecords[index] || null,
+      nutritionData: nutritionRecords[index] || null
+    }));
   } catch (error) {
     logger.error('Error retrieving children for parent', { parentId, error: error.message });
     throw error;
   }
 };
 
-/**
- * Update child information
- * 
- * @params {childId}: string - Child ID
- * @params {updateData}: object - Update data
- * @returns Updated child object
- */
 const updateChild = async (childId, updateData) => {
   try {
     if (!childId) {
@@ -149,7 +206,7 @@ const updateChild = async (childId, updateData) => {
 };
 
 /**
- * Delete a child
+ * Delete a child and cascade delete related data
  * 
  * @params {childId}: string - Child ID
  * @params {parentId}: string - Optional parent ID
@@ -165,7 +222,28 @@ const deleteChild = async (childId, parentId = null) => {
       parentId = child.parentId;
     }
 
-    logger.info('Deleting child', { childId });
+    logger.info('Deleting child and related data', { childId });
+
+    // Delete related education and nutrition records
+    try {
+      await Promise.all([
+        childEducationRepository.getByChildId(childId).then(record => {
+          if (record) {
+            return childEducationRepository.deleteEducationRecord(record._id || record.id);
+          }
+        }),
+        childNutritionRepository.getByChildId(childId).then(record => {
+          if (record) {
+            return childNutritionRepository.deleteNutritionRecord(record._id || record.id);
+          }
+        })
+      ]);
+      logger.info('Deleted related education and nutrition records', { childId });
+    } catch (error) {
+      logger.warn('Error deleting related records', { childId, error: error.message });
+    }
+
+    // Delete the child
     const deleted = await childRepository.deleteChild(childId);
 
     if (!deleted) {
@@ -173,6 +251,7 @@ const deleteChild = async (childId, parentId = null) => {
       return false;
     }
 
+    // Unlink from parent
     if (parentId) {
       try {
         await unlinkChildFromParent(parentId, childId);
@@ -182,7 +261,7 @@ const deleteChild = async (childId, parentId = null) => {
       }
     }
 
-    logger.info('Successfully deleted child', { childId });
+    logger.info('Successfully deleted child and all related data', { childId });
     return true;
   } catch (error) {
     logger.error('Error deleting child', { childId, error: error.message });
@@ -240,15 +319,21 @@ const addCoursesToChild = async (childId, courseIds) => {
 };
 
 /**
- * Get child summary
+ * Get child summary with education and nutrition insights
  * 
  * @params {childId}: string - Child ID
- * @returns Child summary object
+ * @returns Child summary with related data insights
  */
 const getChildSummary = async (childId) => {
   const child = await getChildWithValidation(childId);
   
-  return {
+  // Fetch related data
+  const [educationData, nutritionData] = await Promise.all([
+    childEducationRepository.getByChildId(childId),
+    childNutritionRepository.getByChildId(childId)
+  ]);
+
+  const summary = {
     id: child.id,
     name: child.name,
     age: child.age,
@@ -257,8 +342,44 @@ const getChildSummary = async (childId) => {
     parentId: child.parentId,
     courseCount: child.courseIds ? child.courseIds.length : 0,
     createdAt: child.createdAt,
-    updatedAt: child.updatedAt
+    updatedAt: child.updatedAt,
+    hasEducationData: !!educationData,
+    hasNutritionData: !!nutritionData
   };
+
+  // Add education insights
+  if (educationData && educationData.records && educationData.records.length > 0) {
+    const latestRecord = educationData.records[educationData.records.length - 1];
+    const totalMarks = latestRecord.subjects.reduce((sum, s) => sum + s.marks, 0);
+    const averageMarks = totalMarks / latestRecord.subjects.length;
+
+    summary.education = {
+      recordCount: educationData.records.length,
+      latestGrade: latestRecord.gradeYear,
+      currentAverage: Math.round(averageMarks * 10) / 10,
+      suggestionCount: educationData.suggestions ? educationData.suggestions.length : 0,
+      highPrioritySuggestions: educationData.suggestions 
+        ? educationData.suggestions.filter(s => s.priority === 'high').length 
+        : 0
+    };
+  }
+
+  // Add nutrition insights
+  if (nutritionData && nutritionData.records && nutritionData.records.length > 0) {
+    const latestRecord = nutritionData.records[nutritionData.records.length - 1];
+    
+    summary.nutrition = {
+      recordCount: nutritionData.records.length,
+      currentBMI: latestRecord.physicalMeasurement ? 
+        calculateBMI(latestRecord.physicalMeasurement.heightCm, latestRecord.physicalMeasurement.weightKg) : null,
+      recommendationCount: nutritionData.recommendations ? nutritionData.recommendations.length : 0,
+      criticalRecommendations: nutritionData.recommendations 
+        ? nutritionData.recommendations.filter(r => r.priority === 'critical' || r.priority === 'high').length 
+        : 0
+    };
+  }
+
+  return summary;
 };
 
 /**
