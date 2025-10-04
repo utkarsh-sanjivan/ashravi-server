@@ -171,6 +171,7 @@
     "./src/docs/childEducationDocs.js",
     "./src/docs/childNutritionDocs.js",
     "./src/docs/questionsDocs.js",
+    "/src/docs/courseDocs.js",
     "./src/routes/*.js"
   ]
 }
