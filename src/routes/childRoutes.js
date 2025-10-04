@@ -16,12 +16,14 @@ router.post(
 router.get(
   '/by-parent',
   auth,
+  validateQuery(childValidation.parentIdQuery),
   childController.getChildrenByParent
 );
 
 router.get(
   '/count',
   auth,
+  validateQuery(childValidation.parentIdQuery),
   childController.countChildrenByParent
 );
 
@@ -58,7 +60,7 @@ router.post(
   '/:id/courses',
   auth,
   validateParams(childValidation.idParam),
-  validateRequest(childValidation.addCourses),
+  validateRequest(childValidation.courseOperation),
   childController.addCourses
 );
 

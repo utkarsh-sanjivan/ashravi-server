@@ -13,7 +13,8 @@ const { sanitizeInput } = require('../validations/commonValidation');
 const createChild = async (req, res, next) => {
   try {
     const sanitizedData = sanitizeInput(req.body);
-    const child = await childService.createChild(sanitizedData);
+    const initializeRelated = req.query.initializeRelated === 'true';
+    const child = await childService.createChild(sanitizedData, initializeRelated);
 
     res.status(201).json({
       success: true,
@@ -35,7 +36,8 @@ const createChild = async (req, res, next) => {
  */
 const getChild = async (req, res, next) => {
   try {
-    const child = await childService.getChildWithValidation(req.params.id);
+    const includeRelated = req.query.includeRelated === 'true';
+    const child = await childService.getChildWithValidation(req.params.id, includeRelated);
 
     res.json({
       success: true,
@@ -59,6 +61,7 @@ const getChildrenByParent = async (req, res, next) => {
     const { parentId } = req.query;
     const limit = parseInt(req.query.limit) || 100;
     const skip = parseInt(req.query.skip) || 0;
+    const includeRelated = req.query.includeRelated === 'true';
 
     if (!parentId) {
       return res.status(400).json({
@@ -67,7 +70,7 @@ const getChildrenByParent = async (req, res, next) => {
       });
     }
 
-    const children = await childService.getChildrenByParent(parentId, limit, skip);
+    const children = await childService.getChildrenByParent(parentId, limit, skip, includeRelated);
 
     res.json({
       success: true,
@@ -178,12 +181,12 @@ const addCourses = async (req, res, next) => {
 };
 
 /**
- * Get child summary
+ * Get child summary with related data insights
  * 
  * @params {req}: Request - Express request object
  * @params {res}: Response - Express response object
  * @params {next}: Function - Next middleware
- * @returns Child summary data
+ * @returns Child summary with education and nutrition insights
  */
 const getChildSummary = async (req, res, next) => {
   try {
