@@ -170,6 +170,7 @@
     "./src/docs/parentDocs.js",
     "./src/docs/childEducationDocs.js",
     "./src/docs/childNutritionDocs.js",
+    "./src/docs/questionsDocs.js",
     "./src/routes/*.js"
   ]
 }
