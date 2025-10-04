@@ -164,7 +164,12 @@
     ]
   },
   "apis": [
-    "./src/api-docs/*.js",
+    "./src/docs/authDocs.js",
+    "./src/docs/commonDocs.js",
+    "./src/docs/childDocs.js",
+    "./src/docs/parentDocs.js",
+    "./src/docs/childEducationDocs.js",
+    "./src/docs/childNutritionDocs.js",
     "./src/routes/*.js"
   ]
 }
