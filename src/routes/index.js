@@ -5,6 +5,8 @@ const swaggerUi = require('swagger-ui-express');
 // Import route modules
 const authRoutes = require('./auth');
 const childrenRoutes = require('./children');
+const parentRoutes = require('./parents');
+const childEducationRoutes = require('./childEducation');
 
 // Import utilities
 const logger = require('../utils/logger');
@@ -56,6 +58,8 @@ if (process.env.NODE_ENV === 'development' || process.env.API_DOCS_ENABLED === '
 // API Routes
 router.use('/auth', authRoutes);
 router.use('/children', childrenRoutes);
+router.use('/parents', parentRoutes);
+router.use('/child-education', childEducationRoutes);
 
 // API Information endpoint
 router.get('/', (req, res) => {
