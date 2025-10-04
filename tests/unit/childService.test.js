@@ -64,7 +64,7 @@ describe('Child Service - Linked Data Unit Tests', () => {
             limitsJunkFood: true,
             hasRegularMealTimes: true,
             enjoysVarietyOfFoods: true,
-            eatsAppropriatePor tions: true
+            eatsAppropriatePortions: true
           }
         }
       ],
