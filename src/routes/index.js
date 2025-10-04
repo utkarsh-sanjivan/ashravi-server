@@ -7,6 +7,7 @@ const authRoutes = require('./auth');
 const childrenRoutes = require('./children');
 const parentRoutes = require('./parents');
 const childEducationRoutes = require('./childEducation');
+const childNutritionRoutes = require('./childNutrition');
 
 // Import utilities
 const logger = require('../utils/logger');
@@ -60,6 +61,7 @@ router.use('/auth', authRoutes);
 router.use('/children', childrenRoutes);
 router.use('/parents', parentRoutes);
 router.use('/child-education', childEducationRoutes);
+router.use('/child-nutrition', childNutritionRoutes);
 
 // API Information endpoint
 router.get('/', (req, res) => {
