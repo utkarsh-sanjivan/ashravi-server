@@ -403,3 +403,298 @@ describe('Children API - Linked Data Integration Tests', () => {
     });
   });
 });
+
+describe('Child Assessment Integration', () => {
+  let testChild;
+
+  beforeEach(async () => {
+    testChild = await Child.create({
+      name: 'Assessment Test Child',
+      age: 10,
+      gender: 'male',
+      grade: '5TH',
+      parentId: testUser._id
+    });
+  });
+
+  /**
+   * Test child with assessment results
+   */
+  it('should retrieve child with assessment results', async () => {
+    const assessmentResult = {
+      assessmentId: 'test-uuid-12345',
+      method: 'weighted_average',
+      assessmentDate: new Date(),
+      conductedBy: testUser._id,
+      issues: [
+        {
+          issueId: 'anxiety',
+          issueName: 'Anxiety Disorder',
+          score: 45,
+          normalizedScore: 45,
+          severity: 'normal',
+          recommendedCourseId: '507f1f77bcf86cd799439021'
+        }
+      ],
+      primaryConcerns: [],
+      overallSummary: 'Assessment results are within normal ranges.',
+      recommendations: [],
+      metadata: {
+        totalQuestions: 20,
+        confidence: 75,
+        riskIndicators: []
+      }
+    };
+
+    await Child.findByIdAndUpdate(
+      testChild._id,
+      { $push: { assessmentResults: assessmentResult } }
+    );
+
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.assessmentResults).toBeDefined();
+    expect(response.body.data.assessmentResults).toHaveLength(1);
+    expect(response.body.data.assessmentResults[0].assessmentId).toBe('test-uuid-12345');
+  });
+
+  /**
+   * Test child with multiple assessments
+   */
+  it('should retrieve child with multiple assessment results', async () => {
+    const assessments = [
+      {
+        assessmentId: 'assessment-1',
+        method: 'weighted_average',
+        assessmentDate: new Date('2025-09-01'),
+        conductedBy: testUser._id,
+        issues: [],
+        primaryConcerns: [],
+        overallSummary: 'First assessment',
+        recommendations: [],
+        metadata: { totalQuestions: 15, confidence: 70, riskIndicators: [] }
+      },
+      {
+        assessmentId: 'assessment-2',
+        method: 't_score_weighted',
+        assessmentDate: new Date('2025-10-01'),
+        conductedBy: testUser._id,
+        issues: [],
+        primaryConcerns: [],
+        overallSummary: 'Second assessment',
+        recommendations: [],
+        metadata: { totalQuestions: 25, confidence: 85, riskIndicators: [] }
+      }
+    ];
+
+    await Child.findByIdAndUpdate(
+      testChild._id,
+      { $push: { assessmentResults: { $each: assessments } } }
+    );
+
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(response.body.data.assessmentResults).toHaveLength(2);
+    expect(response.body.data.assessmentResults[0].assessmentId).toBe('assessment-1');
+    expect(response.body.data.assessmentResults[1].assessmentId).toBe('assessment-2');
+  });
+
+  /**
+   * Test child with courses assigned from assessment
+   */
+  it('should show courses assigned from assessment', async () => {
+    const courseId = new mongoose.Types.ObjectId();
+
+    await Child.findByIdAndUpdate(
+      testChild._id,
+      { 
+        $push: { 
+          courseIds: courseId,
+          assessmentResults: {
+            assessmentId: 'test-with-course',
+            method: 'weighted_average',
+            assessmentDate: new Date(),
+            conductedBy: testUser._id,
+            issues: [
+              {
+                issueId: 'anxiety',
+                issueName: 'Anxiety Disorder',
+                score: 45,
+                severity: 'normal',
+                recommendedCourseId: courseId
+              }
+            ],
+            primaryConcerns: [],
+            overallSummary: 'Course recommended',
+            recommendations: [],
+            metadata: { totalQuestions: 20, confidence: 75, riskIndicators: [] }
+          }
+        } 
+      }
+    );
+
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(response.body.data.courseIds).toHaveLength(1);
+    expect(response.body.data.courseIds[0].toString()).toBe(courseId.toString());
+    expect(response.body.data.assessmentResults[0].issues[0].recommendedCourseId.toString()).toBe(courseId.toString());
+  });
+
+  /**
+   * Test assessment with borderline severity
+   */
+  it('should include professional referral for borderline assessment', async () => {
+    const assessmentWithReferral = {
+      assessmentId: 'borderline-assessment',
+      method: 'weighted_average',
+      assessmentDate: new Date(),
+      conductedBy: testUser._id,
+      issues: [
+        {
+          issueId: 'anxiety',
+          issueName: 'Anxiety Disorder',
+          score: 65,
+          normalizedScore: 65,
+          severity: 'borderline',
+          professionalReferral: {
+            required: true,
+            contactDetails: {
+              name: 'Dr. Sarah Johnson',
+              phone: '+1-555-0101',
+              email: 'dr.johnson@mentalhealth.com'
+            }
+          }
+        }
+      ],
+      primaryConcerns: ['Anxiety Disorder'],
+      overallSummary: 'Professional evaluation recommended',
+      recommendations: [
+        {
+          category: 'Anxiety Disorder',
+          text: 'Professional consultation recommended',
+          priority: 'high'
+        }
+      ],
+      metadata: { totalQuestions: 30, confidence: 85, riskIndicators: ['Anxiety Disorder'] }
+    };
+
+    await Child.findByIdAndUpdate(
+      testChild._id,
+      { $push: { assessmentResults: assessmentWithReferral } }
+    );
+
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    const assessment = response.body.data.assessmentResults[0];
+    expect(assessment.primaryConcerns).toContain('Anxiety Disorder');
+    expect(assessment.issues[0].professionalReferral).toBeDefined();
+    expect(assessment.issues[0].professionalReferral.required).toBe(true);
+    expect(assessment.recommendations).toHaveLength(1);
+  });
+});
+
+describe('GET /api/v1/children/:id/latest-assessment', () => {
+  let testChild;
+
+  beforeEach(async () => {
+    testChild = await Child.create({
+      name: 'Latest Assessment Test Child',
+      age: 10,
+      gender: 'male',
+      grade: '5TH',
+      parentId: testUser._id
+    });
+  });
+
+  /**
+   * Test getting child with latest assessment
+   */
+  it('should get child with latest assessment', async () => {
+    const assessments = [
+      {
+        assessmentId: 'old-assessment',
+        method: 'weighted_average',
+        assessmentDate: new Date('2025-09-01'),
+        conductedBy: testUser._id,
+        issues: [
+          { issueId: 'anxiety', issueName: 'Anxiety', score: 40, severity: 'normal' }
+        ],
+        primaryConcerns: [],
+        overallSummary: 'First assessment',
+        recommendations: [],
+        metadata: { totalQuestions: 15, confidence: 70, riskIndicators: [] }
+      },
+      {
+        assessmentId: 'latest-assessment',
+        method: 't_score_weighted',
+        assessmentDate: new Date('2025-10-01'),
+        conductedBy: testUser._id,
+        issues: [
+          { issueId: 'adhd', issueName: 'ADHD', score: 55, severity: 'normal' }
+        ],
+        primaryConcerns: [],
+        overallSummary: 'Latest assessment',
+        recommendations: [],
+        metadata: { totalQuestions: 25, confidence: 85, riskIndicators: [] }
+      }
+    ];
+
+    await Child.findByIdAndUpdate(
+      testChild._id,
+      { $push: { assessmentResults: { $each: assessments } } }
+    );
+
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}/latest-assessment`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.latestAssessment).toBeDefined();
+    expect(response.body.data.latestAssessment.assessmentId).toBe('latest-assessment');
+    expect(response.body.data.latestAssessment.method).toBe('t_score_weighted');
+    expect(response.body.data.assessmentResults).toHaveLength(2);
+  });
+
+  /**
+   * Test getting child with no assessments
+   */
+  it('should return child without latestAssessment when no assessments exist', async () => {
+    const response = await request(app)
+      .get(`/api/v1/children/${testChild._id}/latest-assessment`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.latestAssessment).toBeNull();
+    expect(response.body.data.assessmentResults).toEqual([]);
+  });
+
+  /**
+   * Test getting non-existent child
+   */
+  it('should return 404 for non-existent child', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+
+    const response = await request(app)
+      .get(`/api/v1/children/${fakeId}/latest-assessment`)
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(404);
+
+    expect(response.body.success).toBe(false);
+  });
+});
+

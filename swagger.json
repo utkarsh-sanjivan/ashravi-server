@@ -165,13 +165,14 @@
   },
   "apis": [
     "./src/docs/authDocs.js",
-    "./src/docs/commonDocs.js",
+    "./src/docs/assessmentDocs.js",
     "./src/docs/childDocs.js",
-    "./src/docs/parentDocs.js",
     "./src/docs/childEducationDocs.js",
     "./src/docs/childNutritionDocs.js",
+    "./src/docs/commonDocs.js",
+    "./src/docs/courseDocs.js",
+    "./src/docs/parentDocs.js",
     "./src/docs/questionsDocs.js",
-    "/src/docs/courseDocs.js",
     "./src/routes/*.js"
   ]
 }

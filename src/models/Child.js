@@ -1,5 +1,75 @@
 const mongoose = require('mongoose');
 
+const assessmentResultSchema = new mongoose.Schema({
+  assessmentId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  method: {
+    type: String,
+    enum: ['weighted_average', 't_score_non_weighted', 't_score_weighted'],
+    required: true
+  },
+  assessmentDate: {
+    type: Date,
+    default: Date.now
+  },
+  conductedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  issues: [{
+    issueId: {
+      type: String,
+      required: true
+    },
+    issueName: {
+      type: String,
+      required: true
+    },
+    score: {
+      type: Number,
+      required: true
+    },
+    normalizedScore: Number,
+    tScore: Number,
+    severity: {
+      type: String,
+      enum: ['normal', 'borderline', 'clinical'],
+      required: true
+    },
+    recommendedCourseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Course'
+    },
+    professionalReferral: {
+      required: Boolean,
+      contactDetails: {
+        name: String,
+        phone: String,
+        alternatePhone: String,
+        email: String,
+        address: String
+      }
+    }
+  }],
+  primaryConcerns: [{
+    type: String
+  }],
+  overallSummary: String,
+  recommendations: [{
+    category: String,
+    text: String,
+    priority: String
+  }],
+  metadata: {
+    totalQuestions: Number,
+    confidence: Number,
+    riskIndicators: [String]
+  }
+}, { _id: false, timestamps: true });
+
 const childSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -33,14 +103,14 @@ const childSchema = new mongoose.Schema({
   courseIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Course'
-  }]
+  }],
+  assessmentResults: [assessmentResultSchema]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// Virtual populate for education data
 childSchema.virtual('educationData', {
   ref: 'ChildEducation',
   localField: '_id',
@@ -48,7 +118,6 @@ childSchema.virtual('educationData', {
   justOne: true
 });
 
-// Virtual populate for nutrition data
 childSchema.virtual('nutritionData', {
   ref: 'ChildNutrition',
   localField: '_id',
@@ -56,17 +125,23 @@ childSchema.virtual('nutritionData', {
   justOne: true
 });
 
+childSchema.virtual('latestAssessment').get(function() {
+  if (!this.assessmentResults || this.assessmentResults.length === 0) {
+    return null;
+  }
+  return this.assessmentResults[this.assessmentResults.length - 1];
+});
+
 childSchema.index({ parentId: 1, createdAt: -1 });
 childSchema.index({ name: 'text' });
+childSchema.index({ 'assessmentResults.assessmentId': 1 });
 
-// Cascade delete education and nutrition records when child is deleted
 childSchema.pre('findOneAndDelete', async function(next) {
   try {
     const childId = this.getQuery()._id;
     if (childId) {
       const ChildEducation = mongoose.model('ChildEducation');
       const ChildNutrition = mongoose.model('ChildNutrition');
-      
       await Promise.all([
         ChildEducation.deleteOne({ childId }),
         ChildNutrition.deleteOne({ childId })
@@ -78,7 +153,6 @@ childSchema.pre('findOneAndDelete', async function(next) {
   }
 });
 
-// Cascade delete for multiple children
 childSchema.pre('deleteMany', async function(next) {
   try {
     const Child = mongoose.model('Child');
@@ -88,7 +162,6 @@ childSchema.pre('deleteMany', async function(next) {
     if (childIds.length > 0) {
       const ChildEducation = mongoose.model('ChildEducation');
       const ChildNutrition = mongoose.model('ChildNutrition');
-      
       await Promise.all([
         ChildEducation.deleteMany({ childId: { $in: childIds } }),
         ChildNutrition.deleteMany({ childId: { $in: childIds } })

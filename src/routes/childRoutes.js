@@ -64,4 +64,10 @@ router.post(
   childController.addCourses
 );
 
+router.get('/:id/latest-assessment',
+  auth,
+  validateParams(childValidation.idParam),
+  childController.getChildWithLatestAssessment
+);
+
 module.exports = router;
