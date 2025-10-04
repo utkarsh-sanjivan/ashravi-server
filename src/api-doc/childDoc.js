@@ -218,4 +218,76 @@
  *                   $ref: '#/components/schemas/ChildSummary'
  */
 
+/**
+ * @swagger
+ * /api/v1/children/{id}/latest-assessment:
+ *   get:
+ *     summary: Get child with latest assessment
+ *     tags: [Children]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Child ID
+ *     responses:
+ *       200:
+ *         description: Child with latest assessment retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     age:
+ *                       type: number
+ *                     gender:
+ *                       type: string
+ *                     grade:
+ *                       type: string
+ *                     parentId:
+ *                       type: string
+ *                     courseIds:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     assessmentResults:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     latestAssessment:
+ *                       type: object
+ *                       properties:
+ *                         assessmentId:
+ *                           type: string
+ *                         method:
+ *                           type: string
+ *                         assessmentDate:
+ *                           type: string
+ *                           format: date-time
+ *                         issues:
+ *                           type: array
+ *                         primaryConcerns:
+ *                           type: array
+ *                         overallSummary:
+ *                           type: string
+ *       404:
+ *         description: Child not found or no assessments available
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+
+
 module.exports = {};

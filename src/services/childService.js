@@ -488,6 +488,27 @@ const validateUpdateData = (updateData) => {
   }
 };
 
+/**
+ * Get child with latest assessment
+ * 
+ * @params {childId}: string - Child ID
+ * @returns Child with latest assessment
+ */
+const getChildWithLatestAssessment = async (childId) => {
+  try {
+    const child = await getChildWithValidation(childId, true);
+    
+    if (child.assessmentResults && child.assessmentResults.length > 0) {
+      child.latestAssessment = child.assessmentResults[child.assessmentResults.length - 1];
+    }
+
+    return child;
+  } catch (error) {
+    logger.error('Error fetching child with assessment', { childId, error: error.message });
+    throw error;
+  }
+};
+
 module.exports = {
   createChild,
   getChild,
@@ -497,5 +518,6 @@ module.exports = {
   deleteChild,
   countChildrenByParent,
   addCoursesToChild,
-  getChildSummary
+  getChildSummary,
+  getChildWithLatestAssessment
 };

@@ -33,7 +33,8 @@ describe('Child Service - Linked Data Unit Tests', () => {
       gender: 'male',
       grade: '5TH',
       parentId: '507f1f77bcf86cd799439010',
-      courseIds: []
+      courseIds: [],
+      assessmentResults: []
     };
 
     mockEducationRecord = {
@@ -159,6 +160,80 @@ describe('Child Service - Linked Data Unit Tests', () => {
       expect(result.nutrition).toBeDefined();
       expect(result.nutrition.recordCount).toBe(1);
       expect(result.nutrition.currentBMI).toBeDefined();
+    });
+  });
+
+  describe('Assessment Integration', () => {
+    /**
+     * Test child with assessment results
+     */
+    it('should return child with assessment results', async () => {
+      const mockChildWithAssessment = {
+        ...mockChild,
+        assessmentResults: [
+          {
+            assessmentId: 'test-assessment-uuid',
+            method: 'weighted_average',
+            assessmentDate: new Date(),
+            issues: [
+              {
+                issueId: 'anxiety',
+                issueName: 'Anxiety Disorder',
+                score: 45,
+                severity: 'normal'
+              }
+            ],
+            primaryConcerns: [],
+            overallSummary: 'Assessment results are within normal ranges.'
+          }
+        ]
+      };
+
+      childRepository.getChild = jest.fn().mockResolvedValue(mockChildWithAssessment);
+
+      const result = await childService.getChild('507f1f77bcf86cd799439011');
+
+      expect(result).toBeDefined();
+      expect(result.assessmentResults).toBeDefined();
+      expect(result.assessmentResults).toHaveLength(1);
+      expect(result.assessmentResults[0].assessmentId).toBe('test-assessment-uuid');
+    });
+
+    /**
+     * Test getting child with latest assessment
+     */
+    it('should return child with latest assessment', async () => {
+      const mockChildWithMultipleAssessments = {
+        ...mockChild,
+        assessmentResults: [
+          {
+            assessmentId: 'old-assessment',
+            method: 'weighted_average',
+            assessmentDate: new Date('2025-01-01'),
+            issues: []
+          },
+          {
+            assessmentId: 'latest-assessment',
+            method: 't_score_weighted',
+            assessmentDate: new Date('2025-10-01'),
+            issues: []
+          }
+        ],
+        latestAssessment: {
+          assessmentId: 'latest-assessment',
+          method: 't_score_weighted',
+          assessmentDate: new Date('2025-10-01'),
+          issues: []
+        }
+      };
+
+      childRepository.getChild = jest.fn().mockResolvedValue(mockChildWithMultipleAssessments);
+
+      const result = await childService.getChildWithLatestAssessment('507f1f77bcf86cd799439011');
+
+      expect(result).toBeDefined();
+      expect(result.latestAssessment).toBeDefined();
+      expect(result.latestAssessment.assessmentId).toBe('latest-assessment');
     });
   });
 });

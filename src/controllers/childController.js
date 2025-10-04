@@ -201,6 +201,27 @@ const getChildSummary = async (req, res, next) => {
   }
 };
 
+/**
+ * Get child with latest assessment
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Child data with latest assessment
+ */
+const getChildWithLatestAssessment = async (req, res, next) => {
+  try {
+    const child = await childService.getChildWithLatestAssessment(req.params.id);
+
+    res.json({
+      success: true,
+      data: child
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createChild,
   getChild,
@@ -209,5 +230,6 @@ module.exports = {
   deleteChild,
   countChildrenByParent,
   addCourses,
-  getChildSummary
+  getChildSummary,
+  getChildWithLatestAssessment
 };
