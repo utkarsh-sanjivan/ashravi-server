@@ -4,7 +4,6 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const express = require('express');
 const ChildNutrition = require('../../src/models/ChildNutrition');
 const Child = require('../../src/models/Child');
-const User = require('../../src/models/User');
 const childNutritionRoutes = require('../../src/routes/childNutrition');
 const errorHandler = require('../../src/middleware/errorHandler');
 

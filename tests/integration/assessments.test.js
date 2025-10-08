@@ -3,9 +3,8 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const express = require('express');
 const Child = require('../../src/models/Child');
-const Question = require('../../src/models/Question');
-const User = require('../../src/models/User');
-const assessmentRoutes = require('../../src/routes/assessments');
+const Questions = require('../../src/models/Questions');
+const assessmentRoutes = require('../../src/routes/assessmentsRoutes');
 const errorHandler = require('../../src/middleware/errorHandler');
 
 let app;
@@ -53,7 +52,7 @@ describe('Assessments API - Integration Tests', () => {
 
   beforeEach(async () => {
     await Child.deleteMany({});
-    await Question.deleteMany({});
+    await Questions.deleteMany({});
     await User.deleteMany({});
     
     parentUser = await User.create({
@@ -73,7 +72,7 @@ describe('Assessments API - Integration Tests', () => {
       parentId: parentUser._id
     });
 
-    testQuestions = await Question.create([
+    testQuestions = await Questions.create([
       {
         questionText: 'How often does your child feel anxious in social situations?',
         questionType: 'rating',
@@ -112,7 +111,7 @@ describe('Assessments API - Integration Tests', () => {
 
   afterEach(async () => {
     await Child.deleteMany({});
-    await Question.deleteMany({});
+    await Questions.deleteMany({});
     await User.deleteMany({});
   });
 
