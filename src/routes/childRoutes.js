@@ -2,7 +2,7 @@ const express = require('express');
 const { validateRequest, validateParams, validateQuery } = require('../validations/commonValidation');
 const childValidation = require('../validations/childValidation');
 const childController = require('../controllers/childController');
-const { auth, authorize } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 

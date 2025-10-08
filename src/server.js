@@ -13,7 +13,7 @@ const redis = require('./config/redis');
 
 // Import utilities and middleware
 const logger = require('./utils/logger');
-const errorHandler = require('./middleware/errorHandler');
+const { handle, notFound } = require('./middleware/errorHandler');
 
 // Import routes
 const routes = require('./routes');
@@ -312,11 +312,11 @@ class Server {
     logger.info('Setting up error handling...');
 
     // 404 handler - must be after all other routes
-    this.app.use('*', errorHandler.notFound);
+    this.app.use('*', notFound);
 
     // Global error handler - must be last
     this.app.use((err, req, res, next) => {
-      errorHandler.handle(err, req, res, next);
+      handle(err, req, res, next);
     });
 
     // Uncaught exception handler

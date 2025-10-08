@@ -4,8 +4,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const express = require('express');
 const Parent = require('../../src/models/Parent');
 const Child = require('../../src/models/Child');
-const User = require('../../src/models/User');
-const parentRoutes = require('../../src/routes/parents');
+const parentRoutes = require('../../src/routes/parentsRoutes');
 const errorHandler = require('../../src/middleware/errorHandler');
 
 let app;

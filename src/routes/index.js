@@ -3,7 +3,7 @@ const swaggerJSDoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 
 // Import route modules
-const authRoutes = require('./auth');
+const authRoutes = require('./authRoutes');
 const assessmentRoutes = require('./assessmentsRoutes');
 const childrenRoutes = require('./childrenRoutes');
 const childEducationRoutes = require('./childEducationRoutes');

@@ -5,8 +5,7 @@ const express = require('express');
 const Child = require('../../src/models/Child');
 const ChildEducation = require('../../src/models/ChildEducation');
 const ChildNutrition = require('../../src/models/ChildNutrition');
-const User = require('../../src/models/User');
-const childrenRoutes = require('../../src/routes/children');
+const childrenRoutes = require('../../src/routes/childRoutes');
 const errorHandler = require('../../src/middleware/errorHandler');
 
 let app;

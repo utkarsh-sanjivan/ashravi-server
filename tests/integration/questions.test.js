@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const express = require('express');
 const Question = require('../../src/models/Question');
-const User = require('../../src/models/User');
 const questionRoutes = require('../../src/routes/questions');
 const errorHandler = require('../../src/middleware/errorHandler');
 
