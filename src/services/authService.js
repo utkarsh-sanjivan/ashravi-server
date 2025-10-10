@@ -1,305 +1,423 @@
-const User = require('../models/User');
+const Parent = require('../models/Parent');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
 const logger = require('../utils/logger');
 
-class AuthService {
-  /**
-   * Register a new user
-   * @param {Object} userData - User registration data
-   * @returns {Object} User and token
-   */
-  async register(userData) {
-    const { name, email, password } = userData;
+/*
+ * Register a new parent
+ * 
+ * @params {parentData}: object - Parent registration data
+ * @returns Object with parent profile and JWT token
+ */
+const register = async (parentData) => {
+  const { name, email, password, phoneNumber, city, economicStatus, occupation } = parentData;
 
-    try {
-      // Check if user already exists
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        const error = new Error('User already exists with this email address');
-        error.statusCode = 400;
-        error.code = 'USER_EXISTS';
-        throw error;
-      }
-
-      // Create new user
-      const user = await User.create({
-        name,
-        email,
-        password
-      });
-
-      // Generate JWT token
-      const token = this.generateToken(user);
-
-      logger.info(`New user registered: ${email}`, {
-        userId: user._id,
-        action: 'user_registration'
-      });
-
-      return {
-        user: user.getPublicProfile(),
-        token
-      };
-    } catch (error) {
-      logger.error('Registration failed:', {
-        email,
-        error: error.message,
-        stack: error.stack
-      });
+  try {
+    const existingParent = await Parent.findOne({ email });
+    
+    if (existingParent) {
+      const error = new Error('Parent already exists with this email address');
+      error.statusCode = 400;
+      error.code = 'PARENT_EXISTS';
       throw error;
     }
+
+    const parent = await Parent.create({
+      name,
+      email,
+      password,
+      phoneNumber,
+      city,
+      economicStatus,
+      occupation
+    });
+
+    const token = parent.getSignedJwtToken();
+    const refreshToken = parent.generateRefreshToken();
+
+    parent.refreshTokens.push({
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    });
+    await parent.save();
+
+    logger.info('Parent registered successfully', {
+      parentId: parent._id,
+      email: parent.email,
+      action: 'parent_registration'
+    });
+
+    return {
+      parent: parent.getPublicProfile(),
+      token,
+      refreshToken
+    };
+  } catch (error) {
+    logger.error('Parent registration failed', {
+      email,
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
+};
+
+/*
+ * Login parent with credentials
+ * 
+ * @params {credentials}: object - Login credentials (email, password)
+ * @returns Object with parent profile and JWT token
+ */
+const login = async (credentials) => {
+  const { email, password } = credentials;
+
+  try {
+    const parent = await Parent.findOne({ email, isActive: true }).select('+password');
+
+    if (!parent) {
+      logger.warn('Login attempt with non-existent email', { email });
+      const error = new Error('Invalid email or password');
+      error.statusCode = 401;
+      error.code = 'INVALID_CREDENTIALS';
+      throw error;
+    }
+
+    const isPasswordMatch = await parent.comparePassword(password);
+
+    if (!isPasswordMatch) {
+      logger.warn('Login attempt with incorrect password', { email });
+      const error = new Error('Invalid email or password');
+      error.statusCode = 401;
+      error.code = 'INVALID_CREDENTIALS';
+      throw error;
+    }
+
+    parent.lastLogin = new Date();
+    const token = parent.getSignedJwtToken();
+    const refreshToken = parent.generateRefreshToken();
+
+    parent.refreshTokens.push({
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    });
+
+    if (parent.refreshTokens.length > 5) {
+      parent.refreshTokens = parent.refreshTokens.slice(-5);
+    }
+
+    await parent.save();
+
+    logger.info('Parent logged in successfully', {
+      parentId: parent._id,
+      email: parent.email,
+      action: 'parent_login'
+    });
+
+    return {
+      parent: parent.getPublicProfile(),
+      token,
+      refreshToken
+    };
+  } catch (error) {
+    logger.error('Parent login failed', {
+      email,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Get parent profile by ID
+ * 
+ * @params {parentId}: string - Parent ID
+ * @returns Parent profile object
+ */
+const getProfile = async (parentId) => {
+  try {
+    const parent = await Parent.findById(parentId).populate({
+      path: 'children',
+      select: 'name age gender grade'
+    });
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    const profile = parent.getPublicProfile();
+    profile.children = parent.children;
+
+    return profile;
+  } catch (error) {
+    logger.error('Get parent profile failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Update parent profile
+ * 
+ * @params {parentId}: string - Parent ID
+ * @params {updateData}: object - Data to update
+ * @returns Updated parent profile
+ */
+const updateProfile = async (parentId, updateData) => {
+  const allowedUpdates = ['name', 'phoneNumber', 'city', 'economicStatus', 'occupation'];
+  const updates = {};
+
+  Object.keys(updateData).forEach(key => {
+    if (allowedUpdates.includes(key) && updateData[key] !== undefined) {
+      updates[key] = updateData[key];
+    }
+  });
+
+  if (Object.keys(updates).length === 0) {
+    const error = new Error('No valid fields to update');
+    error.statusCode = 400;
+    error.code = 'NO_VALID_UPDATES';
+    throw error;
   }
 
-  /**
-   * Login user with credentials
-   * @param {Object} credentials - Login credentials
-   * @returns {Object} User and token
-   */
-  async login(credentials) {
-    const { email, password } = credentials;
+  try {
+    const parent = await Parent.findByIdAndUpdate(
+      parentId,
+      updates,
+      { new: true, runValidators: true }
+    );
 
-    try {
-      // Find user by credentials
-      const user = await User.findByCredentials(email, password);
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
 
-      // Update last login time
-      await this.updateLastLogin(user._id);
+    logger.info('Parent profile updated successfully', {
+      parentId,
+      email: parent.email,
+      action: 'profile_update',
+      updatedFields: Object.keys(updates)
+    });
 
-      // Generate JWT token
-      const token = this.generateToken(user);
+    return parent.getPublicProfile();
+  } catch (error) {
+    logger.error('Parent profile update failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
 
-      logger.info(`User logged in: ${email}`, {
-        userId: user._id,
-        action: 'user_login'
+/*
+ * Change parent password
+ * 
+ * @params {parentId}: string - Parent ID
+ * @params {currentPassword}: string - Current password
+ * @params {newPassword}: string - New password
+ * @returns Success message
+ */
+const changePassword = async (parentId, currentPassword, newPassword) => {
+  try {
+    const parent = await Parent.findById(parentId).select('+password');
+
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    const isCurrentPasswordValid = await parent.comparePassword(currentPassword);
+
+    if (!isCurrentPasswordValid) {
+      logger.warn('Password change attempt with incorrect current password', {
+        parentId
       });
+      const error = new Error('Current password is incorrect');
+      error.statusCode = 400;
+      error.code = 'INVALID_CURRENT_PASSWORD';
+      throw error;
+    }
 
-      return {
-        user: user.getPublicProfile(),
-        token
-      };
-    } catch (error) {
-      logger.warn(`Login attempt failed: ${email}`, {
-        error: error.message,
-        action: 'login_failed'
+    parent.password = newPassword;
+    parent.refreshTokens = [];
+    await parent.save();
+
+    logger.info('Parent password changed successfully', {
+      parentId,
+      email: parent.email,
+      action: 'password_change'
+    });
+
+    return { message: 'Password changed successfully' };
+  } catch (error) {
+    logger.error('Parent password change failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Refresh JWT token
+ * 
+ * @params {refreshToken}: string - Refresh token
+ * @returns New access token and refresh token
+ */
+const refresh = async (refreshToken) => {
+  try {
+    const decoded = jwt.verify(
+      refreshToken, 
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET
+    );
+
+    const parent = await Parent.findById(decoded.id);
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found or inactive');
+      error.statusCode = 401;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    const tokenExists = parent.refreshTokens.some(t => t.token === refreshToken);
+
+    if (!tokenExists) {
+      logger.warn('Refresh token not found in parent record', {
+        parentId: parent._id
       });
+      const error = new Error('Invalid refresh token');
+      error.statusCode = 401;
+      error.code = 'INVALID_REFRESH_TOKEN';
+      throw error;
+    }
 
-      const authError = new Error('Invalid email or password');
+    parent.refreshTokens = parent.refreshTokens.filter(t => t.token !== refreshToken);
+
+    const newToken = parent.getSignedJwtToken();
+    const newRefreshToken = parent.generateRefreshToken();
+
+    parent.refreshTokens.push({
+      token: newRefreshToken,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    });
+
+    await parent.save();
+
+    logger.info('Token refreshed successfully', {
+      parentId: parent._id,
+      action: 'token_refresh'
+    });
+
+    return {
+      token: newToken,
+      refreshToken: newRefreshToken
+    };
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      const authError = new Error('Invalid or expired refresh token');
       authError.statusCode = 401;
-      authError.code = 'INVALID_CREDENTIALS';
+      authError.code = 'INVALID_REFRESH_TOKEN';
       throw authError;
     }
+    throw error;
   }
+};
 
-  /**
-   * Get user profile by ID
-   * @param {String} userId - User ID
-   * @returns {Object} User profile
-   */
-  async getProfile(userId) {
-    try {
-      const user = await User.findById(userId);
+/*
+ * Verify JWT token and return parent
+ * 
+ * @params {token}: string - JWT token
+ * @returns Parent object
+ */
+const verify = async (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      if (!user) {
-        const error = new Error('User not found');
-        error.statusCode = 404;
-        error.code = 'USER_NOT_FOUND';
-        throw error;
-      }
+    const parent = await Parent.findById(decoded.id).select('-password');
 
-      return user.getPublicProfile();
-    } catch (error) {
-      logger.error('Get profile failed:', {
-        userId,
-        error: error.message
-      });
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not authorized');
+      error.statusCode = 401;
+      error.code = 'NOT_AUTHORIZED';
       throw error;
     }
+
+    return {
+      valid: true,
+      parent: parent.getPublicProfile()
+    };
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      const authError = new Error('Invalid token');
+      authError.statusCode = 401;
+      authError.code = 'INVALID_TOKEN';
+      throw authError;
+    }
+
+    if (error.name === 'TokenExpiredError') {
+      const authError = new Error('Token expired');
+      authError.statusCode = 401;
+      authError.code = 'TOKEN_EXPIRED';
+      throw authError;
+    }
+
+    throw error;
   }
+};
 
-  /**
-   * Update user profile
-   * @param {String} userId - User ID
-   * @param {Object} updateData - Data to update
-   * @returns {Object} Updated user profile
-   */
-  async updateProfile(userId, updateData) {
-    try {
-      const user = await User.findByIdAndUpdate(
-        userId,
-        updateData,
-        { new: true, runValidators: true }
-      );
+/*
+ * Logout parent
+ * 
+ * @params {parentId}: string - Parent ID
+ * @params {refreshToken}: string - Refresh token to invalidate
+ * @returns Success message
+ */
+const logout = async (parentId, refreshToken) => {
+  try {
+    const parent = await Parent.findById(parentId);
 
-      if (!user) {
-        const error = new Error('User not found');
-        error.statusCode = 404;
-        error.code = 'USER_NOT_FOUND';
-        throw error;
-      }
-
-      logger.info(`Profile updated: ${user.email}`, {
-        userId,
-        action: 'profile_update',
-        updatedFields: Object.keys(updateData)
-      });
-
-      return user.getPublicProfile();
-    } catch (error) {
-      logger.error('Profile update failed:', {
-        userId,
-        updateData,
-        error: error.message
-      });
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
       throw error;
     }
-  }
 
-  /**
-   * Change user password
-   * @param {String} userId - User ID
-   * @param {String} currentPassword - Current password
-   * @param {String} newPassword - New password
-   */
-  async changePassword(userId, currentPassword, newPassword) {
-    try {
-      // Get user with password
-      const user = await User.findById(userId).select('+password');
-
-      if (!user) {
-        const error = new Error('User not found');
-        error.statusCode = 404;
-        error.code = 'USER_NOT_FOUND';
-        throw error;
-      }
-
-      // Verify current password
-      const isCurrentPasswordValid = await user.comparePassword(currentPassword);
-      if (!isCurrentPasswordValid) {
-        const error = new Error('Current password is incorrect');
-        error.statusCode = 400;
-        error.code = 'INVALID_PASSWORD';
-        throw error;
-      }
-
-      // Update password
-      user.password = newPassword;
-      await user.save();
-
-      logger.info(`Password changed: ${user.email}`, {
-        userId,
-        action: 'password_change'
-      });
-
-      return { message: 'Password changed successfully' };
-    } catch (error) {
-      logger.error('Password change failed:', {
-        userId,
-        error: error.message
-      });
-      throw error;
+    if (refreshToken) {
+      parent.refreshTokens = parent.refreshTokens.filter(t => t.token !== refreshToken);
+      await parent.save();
     }
+
+    logger.info('Parent logged out successfully', {
+      parentId,
+      action: 'parent_logout'
+    });
+
+    return { message: 'Logout successful' };
+  } catch (error) {
+    logger.error('Parent logout failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
   }
+};
 
-  /**
-   * Generate JWT token for user
-   * @param {Object} user - User object
-   * @returns {String} JWT token
-   */
-  generateToken(user) {
-    return jwt.sign(
-      { 
-        id: user._id, 
-        email: user.email, 
-        role: user.role 
-      },
-      process.env.JWT_SECRET,
-      { 
-        expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-        issuer: 'nodejs-server',
-        audience: 'nodejs-client'
-      }
-    );
-  }
-
-  /**
-   * Verify JWT token
-   * @param {String} token - JWT token
-   * @returns {Object} Decoded token payload
-   */
-  async verifyToken(token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Check if user still exists
-      const user = await User.findById(decoded.id).select('-password');
-      if (!user || !user.isActive) {
-        const error = new Error('User not found or inactive');
-        error.statusCode = 401;
-        error.code = 'USER_INACTIVE';
-        throw error;
-      }
-
-      return user;
-    } catch (error) {
-      if (error.name === 'JsonWebTokenError') {
-        const authError = new Error('Invalid token');
-        authError.statusCode = 401;
-        authError.code = 'INVALID_TOKEN';
-        throw authError;
-      }
-
-      if (error.name === 'TokenExpiredError') {
-        const authError = new Error('Token expired');
-        authError.statusCode = 401;
-        authError.code = 'TOKEN_EXPIRED';
-        throw authError;
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Update user's last login time
-   * @param {String} userId - User ID
-   * @private
-   */
-  async updateLastLogin(userId) {
-    try {
-      await User.findByIdAndUpdate(userId, { lastLogin: new Date() });
-    } catch (error) {
-      // Log error but don't throw - this is not critical
-      logger.warn('Failed to update last login:', {
-        userId,
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Logout user (in stateless JWT, this is mainly for logging)
-   * @param {String} userId - User ID
-   */
-  async logout(userId) {
-    try {
-      logger.info(`User logged out`, {
-        userId,
-        action: 'user_logout'
-      });
-
-      // In a stateless JWT system, logout is typically handled client-side
-      // For additional security, you could maintain a token blacklist here
-
-      return { message: 'Logout successful' };
-    } catch (error) {
-      logger.error('Logout failed:', {
-        userId,
-        error: error.message
-      });
-      throw error;
-    }
-  }
-}
-
-module.exports = new AuthService();
+module.exports = {
+  register,
+  login,
+  getProfile,
+  updateProfile,
+  changePassword,
+  refresh,
+  verify,
+  logout
+};

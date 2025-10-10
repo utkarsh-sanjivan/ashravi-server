@@ -1,5 +1,5 @@
 const Child = require('../models/Child');
-const Question = require('../models/Question');
+const Question = require('../models/Questions');
 const ASSESSMENT_CONSTANTS = require('../constants/assessmentConstants');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');

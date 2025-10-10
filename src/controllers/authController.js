@@ -2,185 +2,208 @@ const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
-class AuthController {
-  /**
-   * Register a new user
-   * @route POST /api/v1/auth/register
-   * @access Public
-   */
-  async register(req, res, next) {
-    try {
-      const sanitizedData = sanitizeInput(req.body);
+/*
+ * Register a new parent account
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Created parent data
+ */
+const register = async (req, res, next) => {
+  try {
+    const sanitizedData = sanitizeInput(req.body);
+    const result = await authService.register(sanitizedData);
 
-      const result = await authService.register(sanitizedData);
-
-      res.status(201).json({
-        success: true,
-        message: 'User registered successfully',
-        data: result
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.status(201).json({
+      success: true,
+      message: 'Parent registered successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Login user
-   * @route POST /api/v1/auth/login
-   * @access Public
-   */
-  async login(req, res, next) {
-    try {
-      const sanitizedData = sanitizeInput(req.body);
+/*
+ * Parent login
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Parent data with token
+ */
+const login = async (req, res, next) => {
+  try {
+    const sanitizedData = sanitizeInput(req.body);
+    const result = await authService.login(sanitizedData);
 
-      const result = await authService.login(sanitizedData);
-
-      // Set token in httpOnly cookie for additional security (optional)
-      if (process.env.USE_HTTP_ONLY_COOKIES === 'true') {
-        res.cookie('token', result.token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
-      }
-
-      res.json({
-        success: true,
-        message: 'Login successful',
-        data: result
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.json({
+      success: true,
+      message: 'Login successful',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Get current user profile
-   * @route GET /api/v1/auth/profile
-   * @access Private
-   */
-  async getProfile(req, res, next) {
-    try {
-      const userProfile = await authService.getProfile(req.user.id);
+/*
+ * Get parent profile (authenticated)
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Parent profile data
+ */
+const getProfile = async (req, res, next) => {
+  try {
+    const result = await authService.getProfile(req.user.id);
 
-      res.json({
-        success: true,
-        data: {
-          user: userProfile
-        }
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Update user profile
-   * @route PUT /api/v1/auth/profile
-   * @access Private
-   */
-  async updateProfile(req, res, next) {
-    try {
-      const sanitizedData = sanitizeInput(req.body);
+/*
+ * Update parent profile
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated parent profile
+ */
+const updateProfile = async (req, res, next) => {
+  try {
+    const sanitizedData = sanitizeInput(req.body);
+    const result = await authService.updateProfile(req.user.id, sanitizedData);
 
-      const updatedUser = await authService.updateProfile(req.user.id, sanitizedData);
-
-      res.json({
-        success: true,
-        message: 'Profile updated successfully',
-        data: {
-          user: updatedUser
-        }
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Change user password
-   * @route PUT /api/v1/auth/change-password
-   * @access Private
-   */
-  async changePassword(req, res, next) {
-    try {
-      const { currentPassword, newPassword } = sanitizeInput(req.body);
+/*
+ * Change parent password
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Success message
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = sanitizeInput(req.body);
+    const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
 
-      await authService.changePassword(req.user.id, currentPassword, newPassword);
-
-      res.json({
-        success: true,
-        message: 'Password changed successfully'
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Logout user
-   * @route POST /api/v1/auth/logout
-   * @access Private
-   */
-  async logout(req, res, next) {
-    try {
-      await authService.logout(req.user.id);
-
-      // Clear httpOnly cookie if used
-      if (process.env.USE_HTTP_ONLY_COOKIES === 'true') {
-        res.clearCookie('token');
-      }
-
-      res.json({
-        success: true,
-        message: 'Logout successful'
-      });
-    } catch (error) {
-      next(error);
+/*
+ * Refresh JWT token
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns New tokens
+ */
+const refreshToken = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      const error = new Error('Refresh token is required');
+      error.statusCode = 400;
+      error.code = 'MISSING_REFRESH_TOKEN';
+      throw error;
     }
+
+    const result = await authService.refresh(refreshToken);
+
+    res.json({
+      success: true,
+      message: 'Token refreshed successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
+};
 
-  /**
-   * Refresh token
-   * @route POST /api/v1/auth/refresh
-   * @access Private
-   */
-  async refreshToken(req, res, next) {
-    try {
-      // Generate new token for the current user
-      const newToken = authService.generateToken(req.user);
+/*
+ * Verify JWT token
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Token validity and parent info
+ */
+const verifyToken = async (req, res, next) => {
+  try {
+    const { token } = req.body;
 
-      res.json({
-        success: true,
-        message: 'Token refreshed successfully',
-        data: {
-          token: newToken
-        }
-      });
-    } catch (error) {
-      next(error);
+    if (!token) {
+      const error = new Error('Token is required');
+      error.statusCode = 400;
+      error.code = 'MISSING_TOKEN';
+      throw error;
     }
-  }
 
-  /**
-   * Verify token endpoint
-   * @route GET /api/v1/auth/verify
-   * @access Private
-   */
-  async verifyToken(req, res, next) {
-    try {
-      res.json({
-        success: true,
-        message: 'Token is valid',
-        data: {
-          user: req.user.getPublicProfile()
-        }
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-}
+    const result = await authService.verify(token);
 
-module.exports = new AuthController();
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * Logout parent
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Success message
+ */
+const logout = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    const result = await authService.logout(req.user.id, refreshToken);
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  register,
+  login,
+  getProfile,
+  updateProfile,
+  changePassword,
+  refreshToken,
+  verifyToken,
+  logout
+};

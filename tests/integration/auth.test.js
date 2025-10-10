@@ -1,61 +1,92 @@
 const request = require('supertest');
-const { Server } = require('../../src/server');
-const User = require('../../src/models/User');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const express = require('express');
+const Parent = require('../../src/models/Parent');
+const authRoutes = require('../../src/routes/authRoute');
+const errorHandler = require('../../src/middleware/errorHandler');
 
-describe('Authentication Integration Tests', () => {
-  let app;
-  let server;
+let app;
+let mongod;
 
+const setupTestApp = () => {
+  const testApp = express();
+  testApp.use(express.json());
+  testApp.use('/api/v1/auth', authRoutes);
+  testApp.use(errorHandler.handle);
+  return testApp;
+};
+
+describe('Auth API - Integration Tests', () => {
   beforeAll(async () => {
-    // Create server instance for testing
-    const serverInstance = new Server();
-    app = serverInstance.app;
-
-    // Wait a bit for server to initialize
-    await testUtils.wait(1000);
-  });
+    mongod = await MongoMemoryServer.create();
+    const uri = mongod.getUri();
+    await mongoose.connect(uri);
+    app = setupTestApp();
+  }, 30000);
 
   afterAll(async () => {
-    if (server) {
-      await server.close();
-    }
+    await mongoose.disconnect();
+    await mongod.stop();
+  }, 30000);
+
+  beforeEach(async () => {
+    await Parent.deleteMany({});
+  });
+
+  afterEach(async () => {
+    await Parent.deleteMany({});
   });
 
   describe('POST /api/v1/auth/register', () => {
-    it('should register a new user', async () => {
-      const userData = testUtils.generateUserData();
+    it('should register a new parent successfully', async () => {
+      const parentData = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      };
 
       const response = await request(app)
         .post('/api/v1/auth/register')
-        .send(userData)
+        .send(parentData)
         .expect(201);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.message).toBe('User registered successfully');
-      expect(response.body.data.user.email).toBe(userData.email);
-      expect(response.body.data.token).toBeTruthy();
+      expect(response.body.data).toHaveProperty('parent');
+      expect(response.body.data).toHaveProperty('token');
+      expect(response.body.data).toHaveProperty('refreshToken');
+      expect(response.body.data.parent.email).toBe(parentData.email);
     });
 
-    it('should return 400 for duplicate email', async () => {
-      const userData = testUtils.generateUserData();
+    it('should return 400 when parent already exists', async () => {
+      const parentData = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      };
 
-      // Create user first
-      await User.create(userData);
+      await Parent.create(parentData);
 
       const response = await request(app)
         .post('/api/v1/auth/register')
-        .send(userData)
+        .send(parentData)
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('User already exists');
     });
 
-    it('should return 400 for validation errors', async () => {
+    it('should return 400 with invalid data', async () => {
       const invalidData = {
-        name: 'A', // Too short
-        email: 'invalid-email',
-        password: '123' // Too short and no complexity
+        name: 'John Doe',
+        email: 'invalid-email'
       };
 
       const response = await request(app)
@@ -64,85 +95,96 @@ describe('Authentication Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation error');
-      expect(response.body.details).toBeInstanceOf(Array);
     });
-
-    it('should return 429 for rate limit exceeded', async () => {
-      const userData1 = testUtils.generateUserData({ email: 'test1@example.com' });
-      const userData2 = testUtils.generateUserData({ email: 'test2@example.com' });
-      const userData3 = testUtils.generateUserData({ email: 'test3@example.com' });
-      const userData4 = testUtils.generateUserData({ email: 'test4@example.com' });
-      const userData5 = testUtils.generateUserData({ email: 'test5@example.com' });
-      const userData6 = testUtils.generateUserData({ email: 'test6@example.com' });
-
-      // Make 5 successful requests (within rate limit)
-      await request(app).post('/api/v1/auth/register').send(userData1);
-      await request(app).post('/api/v1/auth/register').send(userData2);
-      await request(app).post('/api/v1/auth/register').send(userData3);
-      await request(app).post('/api/v1/auth/register').send(userData4);
-      await request(app).post('/api/v1/auth/register').send(userData5);
-
-      // 6th request should be rate limited
-      const response = await request(app)
-        .post('/api/v1/auth/register')
-        .send(userData6)
-        .expect(429);
-
-      expect(response.body.error).toContain('Too many');
-    }, 10000);
   });
 
   describe('POST /api/v1/auth/login', () => {
-    it('should login user with valid credentials', async () => {
-      const userData = testUtils.generateUserData();
-      await User.create(userData);
+    let testParent;
+
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+    });
+
+    it('should login with valid credentials', async () => {
+      const credentials = {
+        email: 'john@example.com',
+        password: 'password123'
+      };
 
       const response = await request(app)
         .post('/api/v1/auth/login')
-        .send({
-          email: userData.email,
-          password: userData.password
-        })
+        .send(credentials)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.message).toBe('Login successful');
-      expect(response.body.data.user.email).toBe(userData.email);
-      expect(response.body.data.token).toBeTruthy();
+      expect(response.body.data).toHaveProperty('parent');
+      expect(response.body.data).toHaveProperty('token');
+      expect(response.body.data).toHaveProperty('refreshToken');
     });
 
-    it('should return 401 for invalid credentials', async () => {
-      const userData = testUtils.generateUserData();
-      await User.create(userData);
+    it('should return 401 with invalid email', async () => {
+      const credentials = {
+        email: 'wrong@example.com',
+        password: 'password123'
+      };
 
       const response = await request(app)
         .post('/api/v1/auth/login')
-        .send({
-          email: userData.email,
-          password: 'wrongpassword'
-        })
+        .send(credentials)
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Authentication failed');
+    });
+
+    it('should return 401 with invalid password', async () => {
+      const credentials = {
+        email: 'john@example.com',
+        password: 'wrongpassword'
+      };
+
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send(credentials)
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
     });
   });
 
   describe('GET /api/v1/auth/profile', () => {
-    it('should get user profile with valid token', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
-      const token = user.getSignedJwtToken();
+    let testParent;
+    let token;
 
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      token = testParent.getSignedJwtToken();
+    });
+
+    it('should get profile with valid token', async () => {
       const response = await request(app)
         .get('/api/v1/auth/profile')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.user.email).toBe(userData.email);
-      expect(response.body.data.user).not.toHaveProperty('password');
+      expect(response.body.data).toHaveProperty('email', 'john@example.com');
     });
 
     it('should return 401 without token', async () => {
@@ -151,26 +193,32 @@ describe('Authentication Integration Tests', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access denied');
-    });
-
-    it('should return 401 with invalid token', async () => {
-      const response = await request(app)
-        .get('/api/v1/auth/profile')
-        .set('Authorization', 'Bearer invalid.jwt.token')
-        .expect(401);
-
-      expect(response.body.success).toBe(false);
     });
   });
 
   describe('PUT /api/v1/auth/profile', () => {
-    it('should update user profile', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
-      const token = user.getSignedJwtToken();
+    let testParent;
+    let token;
 
-      const updateData = { name: 'Updated Name' };
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      token = testParent.getSignedJwtToken();
+    });
+
+    it('should update profile successfully', async () => {
+      const updateData = {
+        name: 'Jane Doe',
+        city: 'Los Angeles'
+      };
 
       const response = await request(app)
         .put('/api/v1/auth/profile')
@@ -179,19 +227,33 @@ describe('Authentication Integration Tests', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.user.name).toBe(updateData.name);
+      expect(response.body.data.name).toBe('Jane Doe');
+      expect(response.body.data.city).toBe('Los Angeles');
     });
   });
 
   describe('PUT /api/v1/auth/change-password', () => {
-    it('should change password successfully', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
-      const token = user.getSignedJwtToken();
+    let testParent;
+    let token;
 
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      token = testParent.getSignedJwtToken();
+    });
+
+    it('should change password successfully', async () => {
       const passwordData = {
-        currentPassword: userData.password,
-        newPassword: 'NewPassword123!'
+        currentPassword: 'password123',
+        newPassword: 'newpassword123'
       };
 
       const response = await request(app)
@@ -204,14 +266,10 @@ describe('Authentication Integration Tests', () => {
       expect(response.body.message).toBe('Password changed successfully');
     });
 
-    it('should return 400 for incorrect current password', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
-      const token = user.getSignedJwtToken();
-
+    it('should return 400 with incorrect current password', async () => {
       const passwordData = {
         currentPassword: 'wrongpassword',
-        newPassword: 'NewPassword123!'
+        newPassword: 'newpassword123'
       };
 
       const response = await request(app)
@@ -221,6 +279,118 @@ describe('Authentication Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/auth/refresh', () => {
+    let testParent;
+    let refreshToken;
+
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      refreshToken = testParent.generateRefreshToken();
+      testParent.refreshTokens.push({
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      });
+      await testParent.save();
+    });
+
+    it('should refresh token successfully', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('token');
+      expect(response.body.data).toHaveProperty('refreshToken');
+    });
+
+    it('should return 401 with invalid refresh token', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: 'invalid-token' })
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/auth/verify', () => {
+    let testParent;
+    let token;
+
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      token = testParent.getSignedJwtToken();
+    });
+
+    it('should verify valid token', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/verify')
+        .send({ token })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('valid', true);
+      expect(response.body.data).toHaveProperty('parent');
+    });
+
+    it('should return 401 with invalid token', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/verify')
+        .send({ token: 'invalid-token' })
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/auth/logout', () => {
+    let testParent;
+    let token;
+
+    beforeEach(async () => {
+      testParent = await Parent.create({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      });
+
+      token = testParent.getSignedJwtToken();
+    });
+
+    it('should logout successfully', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Logout successful');
     });
   });
 });

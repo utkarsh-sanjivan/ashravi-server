@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const parentSchema = new mongoose.Schema({
   name: {
@@ -7,52 +9,55 @@ const parentSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Name cannot exceed 100 characters']
   },
-  phoneNumber: {
+  email: {
     type: String,
-    required: [true, 'Phone number is required'],
-    trim: true,
-    validate: {
-      validator: function(v) {
-        const digits = v.replace(/\D/g, '');
-        return digits.length >= 10;
-      },
-      message: 'Phone number must contain at least 10 digits'
-    }
-  },
-  emailAddress: {
-    type: String,
-    required: [true, 'Email address is required'],
+    required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
     trim: true,
-    validate: {
-      validator: function(v) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-      },
-      message: 'Invalid email format'
-    }
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email']
+  },
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [8, 'Password must be at least 8 characters'],
+    select: false
+  },
+  phoneNumber: {
+    type: String,
+    required: [true, 'Phone number is required'],
+    trim: true
   },
   city: {
     type: String,
     required: [true, 'City is required'],
-    trim: true,
-    maxlength: [100, 'City name cannot exceed 100 characters']
+    trim: true
   },
   economicStatus: {
     type: String,
-    required: [true, 'Economic status is required'],
-    trim: true,
-    maxlength: [50, 'Economic status cannot exceed 50 characters']
+    enum: ['Lower Income', 'Middle Income', 'Upper Income'],
+    required: [true, 'Economic status is required']
   },
   occupation: {
     type: String,
     required: [true, 'Occupation is required'],
-    trim: true,
-    maxlength: [100, 'Occupation cannot exceed 100 characters']
+    trim: true
   },
   childrenIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Child'
+  }],
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  lastLogin: {
+    type: Date
+  },
+  refreshTokens: [{
+    token: String,
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: Date
   }]
 }, {
   timestamps: true,
@@ -60,10 +65,80 @@ const parentSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-parentSchema.index({ emailAddress: 1 }, { unique: true });
+parentSchema.virtual('children', {
+  ref: 'Child',
+  localField: '_id',
+  foreignField: 'parentId'
+});
+
+parentSchema.index({ email: 1 });
 parentSchema.index({ phoneNumber: 1 });
-parentSchema.index({ city: 1 });
-parentSchema.index({ name: 'text' });
-parentSchema.index({ createdAt: -1 });
+parentSchema.index({ isActive: 1 });
+
+parentSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+parentSchema.methods.comparePassword = async function(candidatePassword) {
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    return false;
+  }
+};
+
+parentSchema.methods.getPublicProfile = function() {
+  return {
+    id: this._id,
+    name: this.name,
+    email: this.email,
+    phoneNumber: this.phoneNumber,
+    city: this.city,
+    economicStatus: this.economicStatus,
+    occupation: this.occupation,
+    childrenIds: this.childrenIds,
+    childrenCount: this.childrenIds.length,
+    createdAt: this.createdAt,
+    lastLogin: this.lastLogin
+  };
+};
+
+parentSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign(
+    { 
+      id: this._id, 
+      email: this.email,
+      role: 'parent'
+    },
+    process.env.JWT_SECRET,
+    { 
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    }
+  );
+};
+
+parentSchema.methods.generateRefreshToken = function() {
+  const refreshToken = jwt.sign(
+    { 
+      id: this._id,
+      type: 'refresh'
+    },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { 
+      expiresIn: '30d'
+    }
+  );
+  return refreshToken;
+};
 
 module.exports = mongoose.model('Parent', parentSchema);
