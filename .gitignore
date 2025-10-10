@@ -138,10 +138,6 @@ temp/
 data/
 mongodb/
 
-# Redis dumps
-dump.rdb
-appendonly.aof
-
 # SSL certificates and keys
 *.pem
 *.key

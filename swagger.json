@@ -4,7 +4,7 @@
     "info": {
       "title": "Node.js Server API - Layered Architecture",
       "version": "1.0.0",
-      "description": "A comprehensive Node.js server API with layered architecture following best practices.\n\n## Features\n- **Layered Architecture**: Clear separation of routes, controllers, services, and models\n- **Security**: JWT authentication, input validation, rate limiting\n- **Performance**: Redis caching, database indexing, compression\n- **Monitoring**: Comprehensive logging and health checks\n- **Documentation**: Auto-generated API documentation\n\n## Architecture\n- **Routes**: Define endpoints and middleware\n- **Controllers**: Handle HTTP requests/responses\n- **Services**: Business logic layer\n- **Models**: Data layer with Mongoose\n- **Middleware**: Cross-cutting concerns\n- **Validations**: Input validation schemas",
+      "description": "A comprehensive Node.js server API with layered architecture following best practices.\n\n## Features\n- **Layered Architecture**: Clear separation of routes, controllers, services, and models\n- **Security**: JWT authentication, input validation, rate limiting\n- **Performance**: database indexing, compression\n- **Monitoring**: Comprehensive logging and health checks\n- **Documentation**: Auto-generated API documentation\n\n## Architecture\n- **Routes**: Define endpoints and middleware\n- **Controllers**: Handle HTTP requests/responses\n- **Services**: Business logic layer\n- **Models**: Data layer with Mongoose\n- **Middleware**: Cross-cutting concerns\n- **Validations**: Input validation schemas",
       "contact": {
         "name": "API Support",
         "email": "support@example.com",

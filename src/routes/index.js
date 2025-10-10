@@ -108,7 +108,6 @@ router.get('/', (req, res) => {
       'Error Handling',
       'API Documentation',
       'Health Monitoring',
-      'Redis Caching',
       'MongoDB Integration'
     ],
     architecture: {
@@ -126,7 +125,7 @@ router.get('/', (req, res) => {
   };
 
   // Log API info request
-  logger.api(req.method, req.originalUrl, 200, 0, {
+  logger.info(req.method, req.originalUrl, 200, 0, {
     userAgent: req.get('User-Agent'),
     ip: req.ip
   });
