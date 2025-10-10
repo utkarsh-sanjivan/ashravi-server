@@ -1,22 +1,19 @@
-const logger = require('../utils/logger');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const Parent = require('../models/Parent');
+const logger = require('../utils/logger');
 
-/**
- * Verify JWT token and authenticate user
+/*
+ * Verify JWT token and authenticate parent
  * 
- * @params {req}: Object - Express request object
- * @params {res}: Object - Express response object
- * @params {next}: Function - Express next function
+ * @params {req}: object - Express request object
+ * @params {res}: object - Express response object
+ * @params {next}: function - Express next middleware
  * @returns Calls next() or sends error response
  */
 const auth = async (req, res, next) => {
   try {
-    let token = req.header('Authorization')?.replace('Bearer ', '');
-
-    if (!token && process.env.USE_HTTP_ONLY_COOKIES === 'true') {
-      token = req.cookies?.token;
-    }
+    // Extract token from Authorization header
+    let token = req.header('Authorization');
 
     if (!token) {
       return res.status(401).json({
@@ -27,107 +24,155 @@ const auth = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    // Remove "Bearer " prefix if present
+    if (token.startsWith('Bearer ')) {
+      token = token.slice(7);
+    }
 
-    if (!user) {
+    // Verify JWT token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Find parent by ID from token
+    const parent = await Parent.findById(decoded.id).select('-password');
+
+    if (!parent) {
+      logger.warn('Authentication failed - parent not found', {
+        tokenId: decoded.id,
+        ip: req.ip
+      });
+
       return res.status(401).json({
         success: false,
         error: 'Authentication failed',
-        message: 'User not found',
-        code: 'USER_NOT_FOUND'
+        message: 'Parent not found',
+        code: 'PARENT_NOT_FOUND'
       });
     }
 
-    req.user = user;
+    if (!parent.isActive) {
+      logger.warn('Authentication failed - parent inactive', {
+        parentId: parent._id,
+        ip: req.ip
+      });
 
-    logger.info('User authenticated', {
-      userId: user._id,
-      email: user.email,
-      role: user.role,
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication failed',
+        message: 'Account is inactive',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Attach parent to request object
+    req.user = {
+      id: parent._id,
+      email: parent.email,
+      role: decoded.role || 'parent',
+      name: parent.name
+    };
+
+    logger.info('Parent authenticated successfully', {
+      parentId: parent._id,
+      email: parent.email,
       ip: req.ip,
       userAgent: req.get('User-Agent')
     });
 
     next();
   } catch (error) {
-    logger.error('Authentication failed', {
+    logger.error('Authentication error', {
       error: error.message,
-      code: error.code,
+      name: error.name,
       ip: req.ip,
-      userAgent: req.get('User-Agent'),
-      token: req.header('Authorization') ? 'present' : 'missing'
+      userAgent: req.get('User-Agent')
     });
 
-    const statusCode = error.name === 'TokenExpiredError' ? 401 : 
-                       error.name === 'JsonWebTokenError' ? 401 : 500;
-    const errorCode = error.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' :
-                      error.name === 'JsonWebTokenError' ? 'INVALID_TOKEN' : 'AUTH_FAILED';
+    // Handle specific JWT errors
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication failed',
+        message: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      });
+    }
 
-    res.status(statusCode).json({
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication failed',
+        message: 'Token has expired',
+        code: 'TOKEN_EXPIRED'
+      });
+    }
+
+    // Generic authentication error
+    res.status(401).json({
       success: false,
       error: 'Authentication failed',
       message: error.message || 'Invalid or expired token',
-      code: errorCode
+      code: 'AUTH_FAILED'
     });
   }
 };
 
-/**
+/*
  * Optional authentication - doesn't fail if no token
  * 
- * @params {req}: Object - Express request object
- * @params {res}: Object - Express response object
- * @params {next}: Function - Express next function
- * @returns Calls next() regardless of authentication status
+ * @params {req}: object - Express request object
+ * @params {res}: object - Express response object
+ * @params {next}: function - Express next middleware
+ * @returns Always calls next()
  */
 const optionalAuth = async (req, res, next) => {
   try {
-    let token = req.header('Authorization')?.replace('Bearer ', '');
+    let token = req.header('Authorization');
 
-    if (!token && process.env.USE_HTTP_ONLY_COOKIES === 'true') {
-      token = req.cookies?.token;
+    if (!token) {
+      return next();
     }
 
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select('-password');
-        
-        if (user) {
-          req.user = user;
-          logger.debug('Optional authentication successful', {
-            userId: user._id,
-            email: user.email
-          });
-        }
-      } catch (error) {
-        logger.debug('Optional authentication failed', {
-          error: error.message,
-          ip: req.ip
-        });
-      }
+    if (token.startsWith('Bearer ')) {
+      token = token.slice(7);
     }
 
-    next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const parent = await Parent.findById(decoded.id).select('-password');
+
+    if (parent && parent.isActive) {
+      req.user = {
+        id: parent._id,
+        email: parent.email,
+        role: decoded.role || 'parent',
+        name: parent.name
+      };
+
+      logger.debug('Optional authentication successful', {
+        parentId: parent._id
+      });
+    }
   } catch (error) {
-    next();
+    // Silently fail for optional auth
+    logger.debug('Optional authentication failed', {
+      error: error.message
+    });
   }
+
+  next();
 };
 
-/**
- * Role-based authorization middleware factory
+/*
+ * Role-based authorization middleware
  * 
- * @params {...allowedRoles}: string - Allowed roles (admin, user, instructor, etc.)
+ * @params {...allowedRoles}: string - Allowed roles (admin, parent, instructor, etc.)
  * @returns Express middleware function
  */
 const authorize = (...allowedRoles) => {
   return (req, res, next) => {
     try {
       if (!req.user) {
-        logger.warn('Authorization failed - no user', {
+        logger.warn('Authorization failed - no user in request', {
           ip: req.ip,
-          userAgent: req.get('User-Agent'),
           requiredRoles: allowedRoles
         });
 
@@ -141,11 +186,10 @@ const authorize = (...allowedRoles) => {
 
       if (!allowedRoles.includes(req.user.role)) {
         logger.warn('Authorization failed - insufficient permissions', {
-          userId: req.user._id,
+          userId: req.user.id,
           userRole: req.user.role,
           requiredRoles: allowedRoles,
-          ip: req.ip,
-          userAgent: req.get('User-Agent')
+          ip: req.ip
         });
 
         return res.status(403).json({
@@ -156,20 +200,18 @@ const authorize = (...allowedRoles) => {
         });
       }
 
-      logger.info('User authorized', {
-        userId: req.user._id,
+      logger.info('User authorized successfully', {
+        userId: req.user.id,
         userRole: req.user.role,
-        requiredRoles: allowedRoles,
         resource: req.originalUrl,
         method: req.method
       });
 
       next();
     } catch (error) {
-      logger.error('Authorization middleware error:', {
+      logger.error('Authorization error', {
         error: error.message,
-        stack: error.stack,
-        userId: req.user?._id
+        stack: error.stack
       });
 
       res.status(500).json({
@@ -182,14 +224,14 @@ const authorize = (...allowedRoles) => {
   };
 };
 
-/**
+/*
  * Check if user owns the resource or has admin privileges
  * 
- * @params {resourceIdExtractor}: Function - Function to extract resource owner ID from request
+ * @params {resourceIdExtractor}: function - Function to extract resource owner ID
  * @returns Express middleware function
  */
 const authorizeOwnerOrAdmin = (resourceIdExtractor = (req) => req.params.id) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     try {
       if (!req.user) {
         return res.status(401).json({
@@ -201,42 +243,37 @@ const authorizeOwnerOrAdmin = (resourceIdExtractor = (req) => req.params.id) => 
       }
 
       const resourceOwnerId = resourceIdExtractor(req);
-      const isOwner = req.user._id.toString() === resourceOwnerId;
+      const isOwner = req.user.id.toString() === resourceOwnerId.toString();
       const isAdmin = req.user.role === 'admin';
 
       if (!isOwner && !isAdmin) {
         logger.warn('Resource access denied', {
-          userId: req.user._id,
+          userId: req.user.id,
           userRole: req.user.role,
           resourceOwnerId,
           resource: req.originalUrl,
-          method: req.method,
           ip: req.ip
         });
 
         return res.status(403).json({
           success: false,
           error: 'Access denied',
-          message: 'You can only access your own resources or you need admin privileges',
+          message: 'You can only access your own resources or need admin privileges',
           code: 'RESOURCE_ACCESS_DENIED'
         });
       }
 
       logger.info('Resource access granted', {
-        userId: req.user._id,
-        userRole: req.user.role,
-        resourceOwnerId,
+        userId: req.user.id,
         accessType: isOwner ? 'owner' : 'admin',
-        resource: req.originalUrl,
-        method: req.method
+        resource: req.originalUrl
       });
 
       next();
     } catch (error) {
-      logger.error('Resource authorization error:', {
+      logger.error('Resource authorization error', {
         error: error.message,
-        stack: error.stack,
-        userId: req.user?._id
+        stack: error.stack
       });
 
       res.status(500).json({
@@ -249,34 +286,33 @@ const authorizeOwnerOrAdmin = (resourceIdExtractor = (req) => req.params.id) => 
   };
 };
 
-/**
+/*
  * Rate limiting for sensitive operations
  * 
- * @params {options}: Object - Rate limiting options
- * @returns Express rate limiting middleware
+ * @params {options}: object - Rate limiting options
+ * @returns Express rate-limit middleware
  */
 const sensitiveOperationLimiter = (options = {}) => {
   const rateLimit = require('express-rate-limit');
 
   return rateLimit({
-    windowMs: options.windowMs || 15 * 60 * 1000,
-    max: options.max || 3,
+    windowMs: options.windowMs || 15 * 60 * 1000, // 15 minutes
+    max: options.max || 3, // 3 attempts per window
     skipSuccessfulRequests: true,
     keyGenerator: (req) => {
-      return req.user ? req.user._id.toString() : req.ip;
+      return req.user ? req.user.id.toString() : req.ip;
     },
     handler: (req, res) => {
       logger.warn('Sensitive operation rate limit exceeded', {
-        userId: req.user?._id,
+        userId: req.user?.id,
         ip: req.ip,
-        userAgent: req.get('User-Agent'),
         resource: req.originalUrl
       });
 
       res.status(429).json({
         success: false,
         error: 'Too many attempts',
-        message: 'You have made too many sensitive operation attempts. Please try again later.',
+        message: 'Too many attempts. Please try again later.',
         code: 'RATE_LIMIT_EXCEEDED'
       });
     },

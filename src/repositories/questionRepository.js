@@ -1,4 +1,4 @@
-const Question = require('../models/Question');
+const Question = require('../models/Questions');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 

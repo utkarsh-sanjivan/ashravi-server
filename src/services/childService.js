@@ -2,7 +2,7 @@ const childRepository = require('../repositories/childRepository');
 const childEducationRepository = require('../repositories/childEducationRepository');
 const childNutritionRepository = require('../repositories/childNutritionRepository');
 const { calculateBMI } = require('../utils/bmiUtils');
-const User = require('../models/User');
+const Parent = require('../models/Parent');
 const logger = require('../utils/logger');
 
 /**
@@ -23,7 +23,7 @@ const createChild = async (childData, initializeRelated = false) => {
       throw error;
     }
 
-    const parent = await User.findById(parentId);
+    const parent = await Parent.findById(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -142,7 +142,7 @@ const getChildrenByParent = async (parentId, limit = 100, skip = 0, includeRelat
   try {
     if (!parentId) return [];
 
-    const parent = await User.findById(parentId);
+    const parent = await Parent.findById(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -279,7 +279,7 @@ const countChildrenByParent = async (parentId) => {
   try {
     if (!parentId) return 0;
 
-    const parent = await User.findById(parentId);
+    const parent = await Parent.findById(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -391,7 +391,7 @@ const getChildSummary = async (childId) => {
  */
 const linkChildToParent = async (parentId, childId) => {
   try {
-    await User.findByIdAndUpdate(
+    await Parent.findByIdAndUpdate(
       parentId,
       { $addToSet: { childrenIds: childId } }
     );
@@ -410,7 +410,7 @@ const linkChildToParent = async (parentId, childId) => {
  */
 const unlinkChildFromParent = async (parentId, childId) => {
   try {
-    await User.findByIdAndUpdate(
+    await Parent.findByIdAndUpdate(
       parentId,
       { $pull: { childrenIds: childId } }
     );

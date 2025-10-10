@@ -1,6 +1,6 @@
 const courseRepository = require('../repositories/courseRepository');
 const courseProgressRepository = require('../repositories/courseProgressRepository');
-const User = require('../models/User');
+const Parent = require('../models/Parent');
 const logger = require('../utils/logger');
 
 /**
@@ -11,7 +11,7 @@ const logger = require('../utils/logger');
  */
 const createCourse = async (data) => {
   try {
-    const instructor = await User.findById(data.instructor);
+    const instructor = await Parent.findById(data.instructor);
     if (!instructor) {
       const error = new Error(`Instructor with ID ${data.instructor} not found`);
       error.statusCode = 404;
@@ -194,7 +194,7 @@ const enrollInCourse = async (userId, courseId) => {
   try {
     const course = await getCourseWithValidation(courseId);
 
-    const user = await User.findById(userId);
+    const user = await Parent.findById(userId);
     if (!user) {
       const error = new Error(`User with ID ${userId} not found`);
       error.statusCode = 404;

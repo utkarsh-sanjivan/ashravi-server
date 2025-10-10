@@ -1,163 +1,288 @@
 const authService = require('../../src/services/authService');
-const User = require('../../src/models/User');
+const Parent = require('../../src/models/Parent');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
-describe('AuthService', () => {
+jest.mock('../../src/models/Parent');
+jest.mock('jsonwebtoken');
+jest.mock('bcryptjs');
+
+describe('Auth Service - Unit Tests', () => {
+  let mockParent;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockParent = {
+      _id: '507f1f77bcf86cd799439011',
+      name: 'John Doe',
+      email: 'john@example.com',
+      phoneNumber: '+1234567890',
+      city: 'New York',
+      economicStatus: 'Middle Income',
+      occupation: 'Software Engineer',
+      childrenIds: [],
+      isActive: true,
+      refreshTokens: [],
+      password: 'hashedPassword123',
+      comparePassword: jest.fn(),
+      getPublicProfile: jest.fn(() => ({
+        id: '507f1f77bcf86cd799439011',
+        name: 'John Doe',
+        email: 'john@example.com',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer',
+        childrenIds: [],
+        childrenCount: 0
+      })),
+      getSignedJwtToken: jest.fn(() => 'mock-jwt-token'),
+      generateRefreshToken: jest.fn(() => 'mock-refresh-token'),
+      save: jest.fn().mockResolvedValue(true)
+    };
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('register', () => {
-    it('should register a new user successfully', async () => {
-      const userData = testUtils.generateUserData();
+    it('should register a new parent successfully', async () => {
+      const parentData = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      };
 
-      const result = await authService.register(userData);
+      Parent.findOne = jest.fn().mockResolvedValue(null);
+      Parent.create = jest.fn().mockResolvedValue(mockParent);
 
-      expect(result).toHaveProperty('user');
+      const result = await authService.register(parentData);
+
+      expect(Parent.findOne).toHaveBeenCalledWith({ email: parentData.email });
+      expect(Parent.create).toHaveBeenCalled();
+      expect(result).toHaveProperty('parent');
       expect(result).toHaveProperty('token');
-      expect(result.user.email).toBe(userData.email);
-      expect(result.user.name).toBe(userData.name);
-      expect(result.user.role).toBe('user');
-      expect(result.token).toBeTruthy();
+      expect(result).toHaveProperty('refreshToken');
+      expect(mockParent.save).toHaveBeenCalled();
     });
 
-    it('should throw error if user already exists', async () => {
-      const userData = testUtils.generateUserData();
+    it('should throw error if parent already exists', async () => {
+      const parentData = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        phoneNumber: '+1234567890',
+        city: 'New York',
+        economicStatus: 'Middle Income',
+        occupation: 'Software Engineer'
+      };
 
-      // Create user first
-      await User.create(userData);
+      Parent.findOne = jest.fn().mockResolvedValue(mockParent);
 
-      // Try to register same user again
-      await expect(authService.register(userData)).rejects.toThrow('User already exists');
-    });
-
-    it('should throw error with invalid email', async () => {
-      const userData = testUtils.generateUserData({ email: 'invalid-email' });
-
-      await expect(authService.register(userData)).rejects.toThrow();
+      await expect(authService.register(parentData)).rejects.toThrow(
+        'Parent already exists with this email address'
+      );
     });
   });
 
   describe('login', () => {
-    it('should login user with valid credentials', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
+    it('should login parent with valid credentials', async () => {
+      const credentials = {
+        email: 'john@example.com',
+        password: 'password123'
+      };
 
-      const result = await authService.login({
-        email: userData.email,
-        password: userData.password
+      mockParent.comparePassword.mockResolvedValue(true);
+      Parent.findOne = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(mockParent)
       });
 
-      expect(result).toHaveProperty('user');
+      const result = await authService.login(credentials);
+
+      expect(Parent.findOne).toHaveBeenCalledWith({ 
+        email: credentials.email, 
+        isActive: true 
+      });
+      expect(mockParent.comparePassword).toHaveBeenCalledWith(credentials.password);
+      expect(result).toHaveProperty('parent');
       expect(result).toHaveProperty('token');
-      expect(result.user.email).toBe(userData.email);
-      expect(result.token).toBeTruthy();
+      expect(result).toHaveProperty('refreshToken');
     });
 
-    it('should throw error with invalid credentials', async () => {
-      const userData = testUtils.generateUserData();
-      await User.create(userData);
-
-      await expect(authService.login({
-        email: userData.email,
-        password: 'wrongpassword'
-      })).rejects.toThrow('Invalid email or password');
-    });
-
-    it('should throw error for non-existent user', async () => {
-      await expect(authService.login({
-        email: 'nonexistent@example.com',
+    it('should throw error with invalid email', async () => {
+      const credentials = {
+        email: 'wrong@example.com',
         password: 'password123'
-      })).rejects.toThrow('Invalid email or password');
+      };
+
+      Parent.findOne = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(null)
+      });
+
+      await expect(authService.login(credentials)).rejects.toThrow(
+        'Invalid email or password'
+      );
+    });
+
+    it('should throw error with invalid password', async () => {
+      const credentials = {
+        email: 'john@example.com',
+        password: 'wrongpassword'
+      };
+
+      mockParent.comparePassword.mockResolvedValue(false);
+      Parent.findOne = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(mockParent)
+      });
+
+      await expect(authService.login(credentials)).rejects.toThrow(
+        'Invalid email or password'
+      );
     });
   });
 
   describe('getProfile', () => {
-    it('should return user profile', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
+    it('should get parent profile successfully', async () => {
+      Parent.findById = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(mockParent)
+      });
 
-      const profile = await authService.getProfile(user._id);
+      const result = await authService.getProfile('507f1f77bcf86cd799439011');
 
-      expect(profile).toHaveProperty('_id');
-      expect(profile.email).toBe(userData.email);
-      expect(profile.name).toBe(userData.name);
-      expect(profile).not.toHaveProperty('password');
+      expect(Parent.findById).toHaveBeenCalledWith('507f1f77bcf86cd799439011');
+      expect(result).toHaveProperty('id');
+      expect(result).toHaveProperty('email');
     });
 
-    it('should throw error for non-existent user', async () => {
-      const fakeId = '507f1f77bcf86cd799439011';
+    it('should throw error when parent not found', async () => {
+      Parent.findById = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(null)
+      });
 
-      await expect(authService.getProfile(fakeId)).rejects.toThrow('User not found');
+      await expect(authService.getProfile('507f1f77bcf86cd799439999')).rejects.toThrow(
+        'Parent not found'
+      );
     });
   });
 
   describe('updateProfile', () => {
-    it('should update user profile successfully', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
+    it('should update parent profile successfully', async () => {
+      const updateData = {
+        name: 'Jane Doe',
+        city: 'Los Angeles'
+      };
 
-      const updateData = { name: 'Updated Name' };
-      const result = await authService.updateProfile(user._id, updateData);
+      Parent.findByIdAndUpdate = jest.fn().mockResolvedValue(mockParent);
 
-      expect(result.name).toBe(updateData.name);
-      expect(result.email).toBe(userData.email);
+      const result = await authService.updateProfile('507f1f77bcf86cd799439011', updateData);
+
+      expect(Parent.findByIdAndUpdate).toHaveBeenCalled();
+      expect(result).toHaveProperty('id');
     });
 
-    it('should throw error for non-existent user', async () => {
-      const fakeId = '507f1f77bcf86cd799439011';
+    it('should throw error with no valid fields', async () => {
+      const updateData = {
+        invalidField: 'value'
+      };
 
-      await expect(authService.updateProfile(fakeId, { name: 'New Name' }))
-        .rejects.toThrow('User not found');
+      await expect(
+        authService.updateProfile('507f1f77bcf86cd799439011', updateData)
+      ).rejects.toThrow('No valid fields to update');
     });
   });
 
   describe('changePassword', () => {
     it('should change password successfully', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
+      mockParent.comparePassword.mockResolvedValue(true);
+      Parent.findById = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(mockParent)
+      });
 
-      const newPassword = 'NewPassword123!';
       const result = await authService.changePassword(
-        user._id, 
-        userData.password, 
-        newPassword
+        '507f1f77bcf86cd799439011',
+        'oldPassword',
+        'newPassword123'
       );
 
-      expect(result.message).toBe('Password changed successfully');
-
-      // Verify new password works
-      const loginResult = await authService.login({
-        email: userData.email,
-        password: newPassword
-      });
-      expect(loginResult.token).toBeTruthy();
+      expect(mockParent.comparePassword).toHaveBeenCalledWith('oldPassword');
+      expect(mockParent.save).toHaveBeenCalled();
+      expect(result).toHaveProperty('message', 'Password changed successfully');
     });
 
     it('should throw error with incorrect current password', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
+      mockParent.comparePassword.mockResolvedValue(false);
+      Parent.findById = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(mockParent)
+      });
 
-      await expect(authService.changePassword(
-        user._id, 
-        'wrongpassword', 
-        'NewPassword123!'
-      )).rejects.toThrow('Current password is incorrect');
+      await expect(
+        authService.changePassword('507f1f77bcf86cd799439011', 'wrongPassword', 'newPassword123')
+      ).rejects.toThrow('Current password is incorrect');
     });
   });
 
-  describe('verifyToken', () => {
-    it('should verify valid token', async () => {
-      const userData = testUtils.generateUserData();
-      const user = await User.create(userData);
-      const token = authService.generateToken(user);
+  describe('refresh', () => {
+    it('should refresh token successfully', async () => {
+      const mockRefreshToken = 'mock-refresh-token';
+      
+      jwt.verify = jest.fn().mockReturnValue({ id: '507f1f77bcf86cd799439011' });
+      mockParent.refreshTokens = [{ token: mockRefreshToken }];
+      Parent.findById = jest.fn().mockResolvedValue(mockParent);
 
-      const verifiedUser = await authService.verifyToken(token);
+      const result = await authService.refresh(mockRefreshToken);
 
-      expect(verifiedUser._id.toString()).toBe(user._id.toString());
-      expect(verifiedUser.email).toBe(user.email);
+      expect(jwt.verify).toHaveBeenCalled();
+      expect(result).toHaveProperty('token');
+      expect(result).toHaveProperty('refreshToken');
     });
 
-    it('should throw error for invalid token', async () => {
-      const invalidToken = 'invalid.jwt.token';
+    it('should throw error with invalid refresh token', async () => {
+      jwt.verify = jest.fn().mockImplementation(() => {
+        throw new Error('JsonWebTokenError');
+      });
 
-      await expect(authService.verifyToken(invalidToken))
-        .rejects.toThrow('Invalid token');
+      await expect(authService.refresh('invalid-token')).rejects.toThrow();
+    });
+  });
+
+  describe('verify', () => {
+    it('should verify token successfully', async () => {
+      jwt.verify = jest.fn().mockReturnValue({ id: '507f1f77bcf86cd799439011' });
+      Parent.findById = jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue(mockParent)
+      });
+
+      const result = await authService.verify('valid-token');
+
+      expect(result).toHaveProperty('valid', true);
+      expect(result).toHaveProperty('parent');
+    });
+
+    it('should throw error with invalid token', async () => {
+      jwt.verify = jest.fn().mockImplementation(() => {
+        const error = new Error('Invalid token');
+        error.name = 'JsonWebTokenError';
+        throw error;
+      });
+
+      await expect(authService.verify('invalid-token')).rejects.toThrow('Invalid token');
+    });
+  });
+
+  describe('logout', () => {
+    it('should logout parent successfully', async () => {
+      Parent.findById = jest.fn().mockResolvedValue(mockParent);
+
+      const result = await authService.logout('507f1f77bcf86cd799439011', 'refresh-token');
+
+      expect(Parent.findById).toHaveBeenCalledWith('507f1f77bcf86cd799439011');
+      expect(result).toHaveProperty('message', 'Logout successful');
     });
   });
 });

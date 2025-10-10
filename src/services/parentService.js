@@ -1,305 +1,290 @@
-const parentRepository = require('../repositories/parentRepository');
-const childRepository = require('../repositories/childRepository');
+const Parent = require('../models/Parent');
+const Child = require('../models/Child');
 const logger = require('../utils/logger');
 
-/**
- * Create a new parent
- * 
- * @params {parentData}: object - Parent creation data
- * @returns Created parent object
- */
-const createParent = async (parentData) => {
-  try {
-    logger.info('Creating parent', { email: parentData.emailAddress });
-    
-    const createdParent = await parentRepository.createParent(parentData);
-
-    if (!createdParent) {
-      const error = new Error('Failed to create parent record');
-      error.statusCode = 500;
-      error.code = 'PARENT_CREATION_FAILED';
-      throw error;
-    }
-
-    logger.info('Successfully created parent', { parentId: createdParent.id });
-    return createdParent;
-  } catch (error) {
-    if (error.code === 'DUPLICATE_EMAIL') {
-      error.statusCode = 409;
-    }
-    logger.error('Error creating parent', { error: error.message, parentData });
-    throw error;
-  }
-};
-
-/**
+/*
  * Get parent by ID
  * 
  * @params {parentId}: string - Parent ID
- * @returns Parent object or null
+ * @returns Parent document
  */
-const getParent = async (parentId) => {
+const getParentById = async (parentId) => {
   try {
-    if (!parentId) return null;
-    return await parentRepository.getParent(parentId);
+    const parent = await Parent.findById(parentId)
+      .populate({
+        path: 'children',
+        select: 'name age gender grade'
+      });
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    return parent;
   } catch (error) {
-    logger.error('Error retrieving parent', { parentId, error: error.message });
+    logger.error('Get parent by ID failed', {
+      parentId,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
- * Get parent with validation (throws if not found)
+/*
+ * Get parent by email
  * 
- * @params {parentId}: string - Parent ID
- * @returns Parent object
- */
-const getParentWithValidation = async (parentId) => {
-  const parent = await getParent(parentId);
-  if (!parent) {
-    const error = new Error(`Parent with ID ${parentId} not found`);
-    error.statusCode = 404;
-    error.code = 'PARENT_NOT_FOUND';
-    throw error;
-  }
-  return parent;
-};
-
-/**
- * Get parent by email address
- * 
- * @params {email}: string - Email address
- * @returns Parent object or null
+ * @params {email}: string - Parent email
+ * @returns Parent document or null
  */
 const getParentByEmail = async (email) => {
   try {
-    if (!email) return null;
-    return await parentRepository.getParentByEmail(email);
+    const parent = await Parent.findOne({ 
+      email: email.toLowerCase().trim(),
+      isActive: true 
+    });
+
+    return parent;
   } catch (error) {
-    logger.error('Error retrieving parent by email', { email, error: error.message });
+    logger.error('Get parent by email failed', {
+      email,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
- * Get parents by city
+/*
+ * Get parents by city with pagination
  * 
  * @params {city}: string - City name
- * @params {limit}: number - Max results
- * @params {skip}: number - Skip count
+ * @params {limit}: number - Results limit
+ * @params {skip}: number - Results to skip
  * @returns Array of parents
  */
 const getParentsByCity = async (city, limit = 100, skip = 0) => {
   try {
-    if (!city) return [];
-    return await parentRepository.getParentsByCity(city, limit, skip);
+    const parents = await Parent.find({ 
+      city: new RegExp(`^${city}$`, 'i'),
+      isActive: true 
+    })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select('-password -refreshTokens');
+
+    return parents.map(parent => parent.getPublicProfile());
   } catch (error) {
-    logger.error('Error retrieving parents by city', { city, error: error.message });
+    logger.error('Get parents by city failed', {
+      city,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
- * Update parent information
- * 
- * @params {parentId}: string - Parent ID
- * @params {updateData}: object - Update data
- * @returns Updated parent object
- */
-const updateParent = async (parentId, updateData) => {
-  try {
-    if (!parentId) {
-      const error = new Error('Parent ID is required for update');
-      error.statusCode = 400;
-      error.code = 'PARENT_ID_REQUIRED';
-      throw error;
-    }
-
-    await getParentWithValidation(parentId);
-
-    logger.info('Updating parent', { parentId });
-    const updatedParent = await parentRepository.updateParent(parentId, updateData);
-
-    if (!updatedParent) {
-      const error = new Error('Failed to update parent record');
-      error.statusCode = 500;
-      error.code = 'PARENT_UPDATE_FAILED';
-      throw error;
-    }
-
-    logger.info('Successfully updated parent', { parentId });
-    return updatedParent;
-  } catch (error) {
-    if (error.code === 'DUPLICATE_EMAIL') {
-      error.statusCode = 409;
-    }
-    logger.error('Error updating parent', { parentId, error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Delete a parent
- * 
- * @params {parentId}: string - Parent ID
- * @params {cascadeDelete}: boolean - Whether to delete children
- * @returns Boolean indicating success
- */
-const deleteParent = async (parentId, cascadeDelete = false) => {
-  try {
-    if (!parentId) return false;
-
-    const parent = await getParentWithValidation(parentId);
-    
-    const children = parent.childrenIds || [];
-    
-    if (children.length > 0 && !cascadeDelete) {
-      const error = new Error(
-        `Parent has ${children.length} children. Enable cascade delete to remove all.`
-      );
-      error.statusCode = 400;
-      error.code = 'PARENT_HAS_CHILDREN';
-      throw error;
-    }
-
-    if (children.length > 0 && cascadeDelete) {
-      logger.info('Cascade deleting children', { parentId, childCount: children.length });
-      
-      for (const childId of children) {
-        try {
-          await childRepository.deleteChild(childId.toString());
-        } catch (error) {
-          logger.warn('Failed to delete child during cascade', { 
-            childId, 
-            error: error.message 
-          });
-        }
-      }
-    }
-
-    logger.info('Deleting parent', { parentId });
-    const deleted = await parentRepository.deleteParent(parentId);
-
-    if (!deleted) {
-      logger.warn('Failed to delete parent', { parentId });
-      return false;
-    }
-
-    logger.info('Successfully deleted parent', { parentId });
-    return true;
-  } catch (error) {
-    logger.error('Error deleting parent', { parentId, error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Get all children across all parents
- * 
- * @returns Array of all children
- */
-const getAllChildren = async () => {
-  try {
-    return await parentRepository.getAllChildren();
-  } catch (error) {
-    logger.error('Error retrieving all children', { error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Get children for a specific parent
+/*
+ * Get children for parent
  * 
  * @params {parentId}: string - Parent ID
  * @returns Array of children
  */
 const getChildrenForParent = async (parentId) => {
   try {
-    if (!parentId) return [];
-    
-    await getParentWithValidation(parentId);
-    return await parentRepository.getChildrenForParent(parentId);
+    const parent = await Parent.findById(parentId).populate('children');
+
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    return parent.children || [];
   } catch (error) {
-    logger.error('Error retrieving children for parent', { parentId, error: error.message });
+    logger.error('Get children for parent failed', {
+      parentId,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
+/*
  * Add child to parent
  * 
  * @params {parentId}: string - Parent ID
  * @params {childId}: string - Child ID
- * @returns Updated parent object
+ * @returns Updated parent
  */
 const addChildToParent = async (parentId, childId) => {
   try {
-    await getParentWithValidation(parentId);
+    const parent = await Parent.findById(parentId);
     
-    const child = await childRepository.getChild(childId);
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    const child = await Child.findById(childId);
+    
     if (!child) {
-      const error = new Error(`Child with ID ${childId} not found`);
+      const error = new Error('Child not found');
       error.statusCode = 404;
       error.code = 'CHILD_NOT_FOUND';
       throw error;
     }
 
-    const parent = await getParent(parentId);
-    const childIds = (parent.childrenIds || []).map(id => id.toString());
-    
-    if (childIds.includes(childId)) {
-      return parent;
+    if (!parent.childrenIds.includes(childId)) {
+      parent.childrenIds.push(childId);
+      await parent.save();
     }
 
-    return await parentRepository.addChildToParent(parentId, childId);
+    logger.info('Child added to parent', {
+      parentId,
+      childId,
+      action: 'add_child'
+    });
+
+    return parent.getPublicProfile();
   } catch (error) {
-    logger.error('Error adding child to parent', { parentId, childId, error: error.message });
+    logger.error('Add child to parent failed', {
+      parentId,
+      childId,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
+/*
  * Remove child from parent
  * 
  * @params {parentId}: string - Parent ID
  * @params {childId}: string - Child ID
- * @returns Updated parent object
+ * @returns Updated parent
  */
 const removeChildFromParent = async (parentId, childId) => {
   try {
-    await getParentWithValidation(parentId);
-    return await parentRepository.removeChildFromParent(parentId, childId);
+    const parent = await Parent.findById(parentId);
+    
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    parent.childrenIds = parent.childrenIds.filter(id => !id.equals(childId));
+    await parent.save();
+
+    logger.info('Child removed from parent', {
+      parentId,
+      childId,
+      action: 'remove_child'
+    });
+
+    return parent.getPublicProfile();
   } catch (error) {
-    logger.error('Error removing child from parent', { parentId, childId, error: error.message });
+    logger.error('Remove child from parent failed', {
+      parentId,
+      childId,
+      error: error.message
+    });
     throw error;
   }
 };
 
-/**
+/*
+ * Delete parent with cascade option
+ * 
+ * @params {parentId}: string - Parent ID
+ * @params {cascadeDelete}: boolean - Whether to delete children
+ * @returns Success boolean
+ */
+const deleteParent = async (parentId, cascadeDelete = false) => {
+  try {
+    const parent = await Parent.findById(parentId);
+    
+    if (!parent) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    if (parent.childrenIds.length > 0 && !cascadeDelete) {
+      const error = new Error(
+        `Parent has ${parent.childrenIds.length} children. Enable cascade delete to remove all.`
+      );
+      error.statusCode = 400;
+      error.code = 'PARENT_HAS_CHILDREN';
+      throw error;
+    }
+
+    if (cascadeDelete && parent.childrenIds.length > 0) {
+      logger.info('Cascade deleting children', {
+        parentId,
+        childCount: parent.childrenIds.length
+      });
+
+      for (const childId of parent.childrenIds) {
+        try {
+          await Child.findByIdAndDelete(childId);
+        } catch (err) {
+          logger.warn('Failed to delete child', {
+            childId,
+            error: err.message
+          });
+        }
+      }
+    }
+
+    await Parent.findByIdAndDelete(parentId);
+
+    logger.info('Parent deleted', {
+      parentId,
+      cascadeDelete,
+      action: 'delete_parent'
+    });
+
+    return true;
+  } catch (error) {
+    logger.error('Delete parent failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
  * Count total parents
  * 
- * @returns Count of parents
+ * @returns Total parent count
  */
 const countParents = async () => {
   try {
-    return await parentRepository.countParents();
+    return await Parent.countDocuments({ isActive: true });
   } catch (error) {
-    logger.error('Error counting parents', { error: error.message });
+    logger.error('Count parents failed', {
+      error: error.message
+    });
     throw error;
   }
 };
 
 module.exports = {
-  createParent,
-  getParent,
-  getParentWithValidation,
+  getParentById,
   getParentByEmail,
   getParentsByCity,
-  updateParent,
-  deleteParent,
-  getAllChildren,
   getChildrenForParent,
   addChildToParent,
   removeChildFromParent,
+  deleteParent,
   countParents
 };
