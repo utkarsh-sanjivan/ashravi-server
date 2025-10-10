@@ -1,9 +1,7 @@
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const mongoose = require('mongoose');
-const redis = require('redis');
 
 let mongod;
-let redisClient;
 
 // Global test setup
 beforeAll(async () => {
@@ -15,25 +13,8 @@ beforeAll(async () => {
     maxPoolSize: 5,
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
-    bufferCommands: false,
-    bufferMaxEntries: 0
+    bufferCommands: false
   });
-
-  // Setup Redis mock for testing
-  jest.mock('redis', () => ({
-    createClient: jest.fn(() => ({
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      ping: jest.fn(() => Promise.resolve('PONG')),
-      set: jest.fn(() => Promise.resolve('OK')),
-      get: jest.fn(() => Promise.resolve(null)),
-      del: jest.fn(() => Promise.resolve(1)),
-      exists: jest.fn(() => Promise.resolve(0)),
-      setEx: jest.fn(() => Promise.resolve('OK')),
-      quit: jest.fn(() => Promise.resolve()),
-      on: jest.fn(),
-    }))
-  }));
 }, 30000);
 
 // Clean up after each test

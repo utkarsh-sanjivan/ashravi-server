@@ -21,7 +21,6 @@ class DatabaseConfig {
         serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
         socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
         bufferCommands: false, // Disable mongoose buffering
-        bufferMaxEntries: 0, // Disable mongoose buffering
 
         // Replica set options
         retryWrites: true,
@@ -41,7 +40,7 @@ class DatabaseConfig {
         })
       };
 
-      await mongoose.connect(process.env.DB_URI, options);
+      await mongoose.connect(process.env.MONGO_URI, options);
 
       this.isConnected = true;
       this.retryAttempts = 0;

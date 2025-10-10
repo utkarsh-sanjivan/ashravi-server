@@ -74,11 +74,6 @@ const handle = (err, req, res, next) => {
     error = { message, statusCode, code };
   }
 
-  if (err.message && err.message.includes('Redis')) {
-    const message = 'Cache service temporarily unavailable';
-    error = { message, statusCode: 503, code: 'CACHE_ERROR' };
-  }
-
   if (err.name === 'RateLimitError') {
     const message = 'Too many requests, please try again later';
     error = { message, statusCode: 429, code: 'RATE_LIMIT_EXCEEDED' };

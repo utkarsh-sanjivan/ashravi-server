@@ -9,7 +9,6 @@ const cookieParser = require('cookie-parser');
 
 // Import configurations
 const database = require('./config/database');
-const redis = require('./config/redis');
 
 // Import utilities and middleware
 const logger = require('./utils/logger');
@@ -61,16 +60,6 @@ class Server {
 
     // Connect to MongoDB (required)
     await database.connect();
-
-    // Connect to Redis (optional)
-    try {
-      await redis.connect();
-      logger.info('Redis connected successfully');
-    } catch (error) {
-      logger.warn('Redis connection failed, continuing without cache:', {
-        error: error.message
-      });
-    }
   }
 
   setupMiddleware() {
@@ -198,7 +187,7 @@ class Server {
 
       res.on('finish', () => {
         const duration = Date.now() - req.startTime;
-        logger.api(req.method, req.originalUrl, res.statusCode, duration, {
+        logger.info(req.method, req.originalUrl, res.statusCode, duration, {
           userId: req.user?.id,
           ip: req.ip,
           userAgent: req.get('User-Agent'),
@@ -222,8 +211,7 @@ class Server {
         environment: process.env.NODE_ENV,
         version: process.env.npm_package_version || '1.0.0',
         services: {
-          database: await database.healthCheck(),
-          cache: await redis.healthCheck()
+          database: await database.healthCheck()
         },
         memory: process.memoryUsage(),
         cpu: process.cpuUsage()
@@ -244,8 +232,7 @@ class Server {
         environment: process.env.NODE_ENV,
         version: process.env.npm_package_version || '1.0.0',
         services: {
-          database: await database.healthCheck(),
-          cache: await redis.healthCheck()
+          database: await database.healthCheck()
         },
         system: {
           memory: process.memoryUsage(),
@@ -408,7 +395,6 @@ class Server {
 
       // Close database connections
       await database.disconnect();
-      await redis.disconnect();
 
       logger.info('✅ Graceful shutdown completed');
 
