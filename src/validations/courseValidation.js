@@ -41,7 +41,7 @@ const sectionSchema = Joi.object({
 const courseValidation = {
   create: Joi.object({
     title: Joi.string().min(5).max(200).required(),
-    headline: Joi.string().max(500).required(),
+    headline: Joi.string().max(500),
     description: Joi.string().min(50).required(),
     shortDescription: Joi.string().max(300).required(),
     thumbnail: Joi.string().uri().required(),
@@ -56,14 +56,13 @@ const courseValidation = {
       discountedPrice: Joi.number().min(0)
     }).required(),
     sections: Joi.array().items(sectionSchema).min(1).required(),
-    instructor: Joi.string().length(24).required(),
+    instructor: Joi.string().length(24),
     tags: Joi.array().items(Joi.string()),
     prerequisites: Joi.array().items(Joi.string()),
     learningOutcomes: Joi.array().items(Joi.string()).min(1).required(),
     targetAudience: Joi.array().items(Joi.string()),
     isPublished: Joi.boolean().default(false)
   }),
-
   update: Joi.object({
     title: Joi.string().min(5).max(200),
     headline: Joi.string().max(500),
@@ -87,7 +86,6 @@ const courseValidation = {
     targetAudience: Joi.array().items(Joi.string()),
     isPublished: Joi.boolean()
   }),
-
   query: Joi.object({
     page: Joi.number().min(1).default(1),
     limit: Joi.number().min(1).max(100).default(20),
@@ -105,21 +103,18 @@ const courseValidation = {
     sortBy: Joi.string().valid('createdAt', 'updatedAt', 'enrollmentCount', 'title').default('createdAt'),
     sortOrder: Joi.string().valid('asc', 'desc').default('desc')
   }),
-
   updateVideoProgress: Joi.object({
     sectionId: Joi.string().length(24).required(),
     videoId: Joi.string().length(24).required(),
     watchedDuration: Joi.number().min(0).required(),
     totalDuration: Joi.number().min(0).required()
   }),
-
   updateTestProgress: Joi.object({
     sectionId: Joi.string().length(24).required(),
     testId: Joi.string().length(24).required(),
     score: Joi.number().min(0).max(100).required(),
     passingScore: Joi.number().min(0).max(100).default(70)
   }),
-
   addPdfs: Joi.object({
     pdfs: Joi.array().min(1).max(3).required().items(
       Joi.object({
@@ -133,22 +128,18 @@ const courseValidation = {
       'any.required': 'PDFs array is required'
     })
   }),
-
   sectionPdfParams: Joi.object({
     courseId: Joi.string().length(24).required(),
     sectionId: Joi.string().length(24).required()
   }),
-
   removePdfParams: Joi.object({
     courseId: Joi.string().length(24).required(),
     sectionId: Joi.string().length(24).required(),
     pdfId: Joi.string().length(24).required()
   }),
-
   idParam: Joi.object({
     id: Joi.string().length(24).required()
   }),
-
   slugParam: Joi.object({
     slug: Joi.string().required()
   })

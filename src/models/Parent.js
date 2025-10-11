@@ -11,11 +11,10 @@ const parentSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email']
+    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email']
   },
   password: {
     type: String,
@@ -25,22 +24,19 @@ const parentSchema = new mongoose.Schema({
   },
   phoneNumber: {
     type: String,
-    required: [true, 'Phone number is required'],
     trim: true
   },
   city: {
     type: String,
-    required: [true, 'City is required'],
     trim: true
   },
   economicStatus: {
     type: String,
     enum: ['Lower Income', 'Middle Income', 'Upper Income'],
-    required: false  // ✅ CHANGED: Not required anymore
+    required: false
   },
   occupation: {
     type: String,
-    required: [true, 'Occupation is required'],
     trim: true
   },
   childrenIds: [{
@@ -73,19 +69,25 @@ parentSchema.virtual('children', {
 
 parentSchema.index({ email: 1 });
 parentSchema.index({ phoneNumber: 1 });
-parentSchema.index({ isActive: 1 });
 
 parentSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
     return next();
   }
-
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     next();
   } catch (error) {
     next(error);
+  }
+});
+
+parentSchema.pre('validate', function(next) {
+  if (!this.email && !this.phoneNumber) {
+    next(new Error('Either email or phone number is required'));
+  } else {
+    next();
   }
 });
 
@@ -104,7 +106,7 @@ parentSchema.methods.getPublicProfile = function() {
     email: this.email,
     phoneNumber: this.phoneNumber,
     city: this.city,
-    economicStatus: this.economicStatus,  // ✅ Will be undefined if not set
+    economicStatus: this.economicStatus,
     occupation: this.occupation,
     childrenIds: this.childrenIds,
     childrenCount: this.childrenIds.length,
@@ -115,13 +117,13 @@ parentSchema.methods.getPublicProfile = function() {
 
 parentSchema.methods.getSignedJwtToken = function() {
   return jwt.sign(
-    { 
-      id: this._id, 
+    {
+      id: this._id,
       email: this.email,
       role: 'parent'
     },
     process.env.JWT_SECRET,
-    { 
+    {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     }
   );
@@ -129,12 +131,12 @@ parentSchema.methods.getSignedJwtToken = function() {
 
 parentSchema.methods.generateRefreshToken = function() {
   const refreshToken = jwt.sign(
-    { 
+    {
       id: this._id,
       type: 'refresh'
     },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
-    { 
+    {
       expiresIn: '30d'
     }
   );
