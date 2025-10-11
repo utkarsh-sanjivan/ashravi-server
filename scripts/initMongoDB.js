@@ -44,98 +44,99 @@ class MongoDBInitializer {
    * Initialize Parents collection
    */
   async initParentsCollection() {
-    console.log('\n📋 Initializing Parents collection...');
-    
-    const collectionName = 'parents';
-    
-    try {
-      await this.db.createCollection(collectionName, {
-        validator: {
-          $jsonSchema: {
-            bsonType: 'object',
-            required: ['name', 'email', 'password', 'phoneNumber', 'city', 'economicStatus', 'occupation'],
-            properties: {
-              name: {
-                bsonType: 'string',
-                maxLength: 100,
-                description: 'Parent name is required and must be a string'
+  console.log('\n📋 Initializing Parents collection...');
+  
+  const collectionName = 'parents';
+  
+  try {
+    await this.db.createCollection(collectionName, {
+      validator: {
+        $jsonSchema: {
+          bsonType: 'object',
+          required: ['name', 'email', 'password', 'phoneNumber', 'city', 'occupation'],
+          properties: {
+            name: {
+              bsonType: 'string',
+              maxLength: 100,
+              description: 'Parent name is required and must be a string'
+            },
+            email: {
+              bsonType: 'string',
+              pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
+              description: 'Valid email is required'
+            },
+            password: {
+              bsonType: 'string',
+              minLength: 8,
+              description: 'Password must be at least 8 characters'
+            },
+            phoneNumber: {
+              bsonType: 'string',
+              description: 'Phone number is required'
+            },
+            city: {
+              bsonType: 'string',
+              description: 'City is required'
+            },
+            economicStatus: {
+              enum: ['Lower Income', 'Middle Income', 'Upper Income'],
+              description: 'Economic status is optional'  // ✅ CHANGED: Now optional
+            },
+            occupation: {
+              bsonType: 'string',
+              description: 'Occupation is required'
+            },
+            childrenIds: {
+              bsonType: 'array',
+              items: {
+                bsonType: 'objectId'
               },
-              email: {
-                bsonType: 'string',
-                pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
-                description: 'Valid email is required'
-              },
-              password: {
-                bsonType: 'string',
-                minLength: 8,
-                description: 'Password must be at least 8 characters'
-              },
-              phoneNumber: {
-                bsonType: 'string',
-                description: 'Phone number is required'
-              },
-              city: {
-                bsonType: 'string',
-                description: 'City is required'
-              },
-              economicStatus: {
-                enum: ['Lower Income', 'Middle Income', 'Upper Income'],
-                description: 'Economic status must be one of the enum values'
-              },
-              occupation: {
-                bsonType: 'string',
-                description: 'Occupation is required'
-              },
-              childrenIds: {
-                bsonType: 'array',
-                items: {
-                  bsonType: 'objectId'
-                },
-                description: 'Array of child ObjectIds'
-              },
-              isActive: {
-                bsonType: 'bool',
-                description: 'Account active status'
-              },
-              lastLogin: {
-                bsonType: 'date',
-                description: 'Last login timestamp'
-              },
-              refreshTokens: {
-                bsonType: 'array',
-                items: {
-                  bsonType: 'object',
-                  required: ['token', 'expiresAt'],
-                  properties: {
-                    token: { bsonType: 'string' },
-                    createdAt: { bsonType: 'date' },
-                    expiresAt: { bsonType: 'date' }
-                  }
+              description: 'Array of child ObjectIds'
+            },
+            isActive: {
+              bsonType: 'bool',
+              description: 'Account active status'
+            },
+            lastLogin: {
+              bsonType: 'date',
+              description: 'Last login timestamp'
+            },
+            refreshTokens: {
+              bsonType: 'array',
+              items: {
+                bsonType: 'object',
+                required: ['token', 'expiresAt'],
+                properties: {
+                  token: { bsonType: 'string' },
+                  createdAt: { bsonType: 'date' },
+                  expiresAt: { bsonType: 'date' }
                 }
               }
             }
           }
         }
-      });
-
-      // Create indexes
-      await this.db.collection(collectionName).createIndexes([
-        { key: { email: 1 }, unique: true, name: 'email_unique' },
-        { key: { phoneNumber: 1 }, name: 'phoneNumber_index' },
-        { key: { isActive: 1 }, name: 'isActive_index' },
-        { key: { city: 1 }, name: 'city_index' },
-        { key: { createdAt: -1 }, name: 'createdAt_desc' }
-      ]);
-
-      console.log('✅ Parents collection initialized with validation and indexes');
-    } catch (error) {
-      if (error.code === 48) {
-        console.log('ℹ️  Parents collection already exists');
-      } else {
-        throw error;
       }
+    });
+
+    // Create indexes
+    await this.db.collection(collectionName).createIndexes([
+      { key: { email: 1 }, unique: true, name: 'email_unique' },
+      { key: { phoneNumber: 1 }, name: 'phoneNumber_index' },
+      { key: { isActive: 1 }, name: 'isActive_index' },
+      { key: { city: 1 }, name: 'city_index' },
+      { key: { createdAt: -1 }, name: 'createdAt_desc' }
+    ]);
+
+    console.log('✅ Parents collection initialized with validation and indexes');
+  } catch (error) {
+    if (error.code === 48) {
+      console.log('ℹ️  Parents collection already exists');
+    } else {
+      throw error;
     }
   }
+}
+
 
   /**
    * Initialize Children collection

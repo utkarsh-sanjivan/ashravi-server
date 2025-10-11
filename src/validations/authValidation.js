@@ -27,10 +27,9 @@ const authValidation = {
     }),
     economicStatus: Joi.string()
       .valid('Lower Income', 'Middle Income', 'Upper Income')
-      .required()
+      .optional()  // ✅ CHANGED: Made optional
       .messages({
-        'any.only': 'Economic status must be Lower Income, Middle Income, or Upper Income',
-        'any.required': 'Economic status is required'
+        'any.only': 'Economic status must be Lower Income, Middle Income, or Upper Income'
       }),
     occupation: Joi.string().trim().required().messages({
       'string.empty': 'Occupation is required',
@@ -56,9 +55,12 @@ const authValidation = {
     }),
     phoneNumber: Joi.string().trim(),
     city: Joi.string().trim(),
-    economicStatus: Joi.string().valid('Lower Income', 'Middle Income', 'Upper Income').messages({
-      'any.only': 'Economic status must be Lower Income, Middle Income, or Upper Income'
-    }),
+    economicStatus: Joi.string()
+      .valid('Lower Income', 'Middle Income', 'Upper Income')
+      .optional()
+      .messages({
+        'any.only': 'Economic status must be Lower Income, Middle Income, or Upper Income'
+      }),
     occupation: Joi.string().trim()
   }).min(1).messages({
     'object.min': 'At least one field must be provided for update'

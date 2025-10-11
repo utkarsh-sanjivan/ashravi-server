@@ -16,7 +16,10 @@
     "format": "prettier --write src/",
     "health-check": "curl http://localhost:3000/health-check",
     "db:init": "node scripts/initMongoDB.js",
-    "db:drop": "node scripts/dropMongoDB.js"
+    "db:drop": "node scripts/dropMongoDB.js",
+    "migrate": "node scripts/migrate.js migrate",
+    "migrate:status": "node scripts/migrate.js status",
+    "migrate:rollback": "node scripts/migrate.js rollback"
   },
   "keywords": [
     "nodejs",
