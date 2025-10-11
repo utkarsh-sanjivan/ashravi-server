@@ -80,4 +80,19 @@ router.post('/:id/certificate',
   courseController.issueCertificate
 );
 
+router.post('/:courseId/sections/:sectionId/pdfs',
+  auth,
+  authorize('admin', 'instructor'),
+  validateParams(courseValidation.sectionPdfParams),
+  validateRequest(courseValidation.addPdfs),
+  courseController.addPdfsToSection
+);
+
+router.delete('/:courseId/sections/:sectionId/pdfs/:pdfId',
+  auth,
+  authorize('admin', 'instructor'),
+  validateParams(courseValidation.removePdfParams),
+  courseController.removePdfFromSection
+);
+
 module.exports = router;

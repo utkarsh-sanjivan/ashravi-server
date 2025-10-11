@@ -1,5 +1,32 @@
 const mongoose = require('mongoose');
 
+const pdfMetadataSchema = new mongoose.Schema({
+  filename: {
+    type: String,
+    required: [true, 'PDF filename is required'],
+    trim: true
+  },
+  url: {
+    type: String,
+    required: [true, 'PDF URL is required'],
+    trim: true
+  },
+  size: {
+    type: Number,
+    required: [true, 'PDF size is required'],
+    min: [0, 'File size must be non-negative']
+  },
+  uploadedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Parent',
+    required: [true, 'Uploader reference is required']
+  },
+  uploadedAt: {
+    type: Date,
+    default: Date.now
+  }
+}, { _id: true });
+
 const videoSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -82,6 +109,16 @@ const sectionSchema = new mongoose.Schema({
     default: []
   },
   test: testSchema,
+  pdfs: {
+    type: [pdfMetadataSchema],
+    default: [],
+    validate: {
+      validator: function(pdfs) {
+        return pdfs.length <= 3;
+      },
+      message: 'A section cannot have more than 3 PDF files'
+    }
+  },
   isLocked: {
     type: Boolean,
     default: false
