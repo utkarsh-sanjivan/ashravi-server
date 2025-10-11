@@ -6,6 +6,12 @@ const logger = require('../utils/logger');
 
 const MAX_PDFS_PER_SECTION = 3;
 
+/**
+ * Create a new course
+ * 
+ * @params {data}: object - Course data
+ * @returns Created course object
+ */
 const createCourse = async (data) => {
   try {
     const instructor = await Parent.findById(data.instructor);
@@ -17,8 +23,10 @@ const createCourse = async (data) => {
     }
 
     validateCourseStructure(data.sections);
+    
     logger.info('Creating course', { title: data.title, instructor: data.instructor });
     const created = await courseRepository.createCourse(data);
+    
     if (!created) {
       const error = new Error('Failed to create course');
       error.statusCode = 500;
@@ -33,6 +41,13 @@ const createCourse = async (data) => {
   }
 };
 
+/**
+ * Get course by ID
+ * 
+ * @params {courseId}: string - Course ID
+ * @params {populate}: boolean - Whether to populate instructor
+ * @returns Course object or null
+ */
 const getCourse = async (courseId, populate = true) => {
   try {
     if (!courseId) return null;
@@ -43,6 +58,13 @@ const getCourse = async (courseId, populate = true) => {
   }
 };
 
+/**
+ * Get course with validation
+ * 
+ * @params {courseId}: string - Course ID
+ * @params {populate}: boolean - Whether to populate instructor
+ * @returns Course object
+ */
 const getCourseWithValidation = async (courseId, populate = true) => {
   const course = await getCourse(courseId, populate);
   if (!course) {
@@ -55,6 +77,13 @@ const getCourseWithValidation = async (courseId, populate = true) => {
   return course;
 };
 
+/**
+ * Get course by slug
+ * 
+ * @params {slug}: string - Course slug
+ * @params {populate}: boolean - Whether to populate instructor
+ * @returns Course object or null
+ */
 const getCourseBySlug = async (slug, populate = true) => {
   try {
     if (!slug) return null;
@@ -65,9 +94,20 @@ const getCourseBySlug = async (slug, populate = true) => {
   }
 };
 
+/**
+ * Get courses with pagination and filters
+ * 
+ * @params {filters}: object - Filter criteria
+ * @params {page}: number - Page number
+ * @params {limit}: number - Results per page
+ * @params {sortBy}: string - Sort field
+ * @params {sortOrder}: string - Sort order (asc/desc)
+ * @returns Paginated courses with metadata
+ */
 const getCourses = async (filters = {}, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc') => {
   try {
     const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+    
     if (typeof filters.tags === 'string') {
       filters.tags = filters.tags.split(',').map(tag => tag.trim());
     }
@@ -80,6 +120,14 @@ const getCourses = async (filters = {}, page = 1, limit = 20, sortBy = 'createdA
   }
 };
 
+
+/**
+ * Update course
+ * 
+ * @params {courseId}: string - Course ID
+ * @params {data}: object - Update data
+ * @returns Updated course object
+ */
 const updateCourse = async (courseId, data) => {
   try {
     if (!courseId) {
@@ -90,12 +138,14 @@ const updateCourse = async (courseId, data) => {
     }
 
     await getCourseWithValidation(courseId);
+    
     if (data.sections) {
       validateCourseStructure(data.sections);
     }
 
     logger.info('Updating course', { courseId });
     const updated = await courseRepository.updateCourse(courseId, data);
+    
     if (!updated) {
       const error = new Error('Failed to update course');
       error.statusCode = 500;
@@ -110,12 +160,21 @@ const updateCourse = async (courseId, data) => {
   }
 };
 
+/**
+ * Delete course
+ * 
+ * @params {courseId}: string - Course ID
+ * @returns Boolean indicating success
+ */
 const deleteCourse = async (courseId) => {
   try {
     if (!courseId) return false;
+    
     await getCourseWithValidation(courseId);
+    
     logger.info('Deleting course', { courseId });
     const deleted = await courseRepository.deleteCourse(courseId);
+    
     if (!deleted) {
       logger.warn('Failed to delete course', { courseId });
       return false;
@@ -129,9 +188,17 @@ const deleteCourse = async (courseId) => {
   }
 };
 
+/**
+ * Enroll user in course
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @returns Course progress object
+ */
 const enrollInCourse = async (userId, courseId) => {
   try {
     const course = await getCourseWithValidation(courseId);
+    
     const user = await Parent.findById(userId);
     if (!user) {
       const error = new Error(`User with ID ${userId} not found`);
@@ -147,6 +214,7 @@ const enrollInCourse = async (userId, courseId) => {
     }
 
     await courseRepository.incrementEnrollment(courseId);
+    
     const progress = await courseProgressRepository.getOrCreateProgress(userId, courseId);
     logger.info('User enrolled in course', { userId, courseId });
     return progress;
@@ -156,6 +224,13 @@ const enrollInCourse = async (userId, courseId) => {
   }
 };
 
+/**
+ * Get user's course progress
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @returns Progress object with course details
+ */
 const getUserCourseProgress = async (userId, courseId) => {
   try {
     const [course, progress] = await Promise.all([
@@ -182,6 +257,13 @@ const getUserCourseProgress = async (userId, courseId) => {
   }
 };
 
+/**
+ * Get all user's progress
+ * 
+ * @params {userId}: string - User ID
+ * @params {limit}: number - Max results
+ * @returns Array of progress records
+ */
 const getUserProgress = async (userId, limit = 100) => {
   try {
     return await courseProgressRepository.getUserProgress(userId, limit);
@@ -191,9 +273,21 @@ const getUserProgress = async (userId, limit = 100) => {
   }
 };
 
+/**
+ * Update video progress
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @params {sectionId}: string - Section ID
+ * @params {videoId}: string - Video ID
+ * @params {watchedDuration}: number - Watched duration
+ * @params {totalDuration}: number - Total duration
+ * @returns Updated progress with recalculated overall progress
+ */
 const updateVideoProgress = async (userId, courseId, sectionId, videoId, watchedDuration, totalDuration) => {
   try {
     const course = await getCourseWithValidation(courseId);
+    
     const updated = await courseProgressRepository.updateVideoProgress(
       userId,
       courseId,
@@ -202,6 +296,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
       watchedDuration,
       totalDuration
     );
+    
     if (!updated) {
       const error = new Error('Failed to update video progress');
       error.statusCode = 500;
@@ -215,6 +310,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
       course.metadata.totalVideos,
       course.metadata.totalTests
     );
+    
     logger.info('Updated video progress', { userId, courseId, videoId, progress: recalculated.overallProgress });
     return recalculated;
   } catch (error) {
@@ -223,9 +319,21 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
   }
 };
 
+/**
+ * Update test progress
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @params {sectionId}: string - Section ID
+ * @params {testId}: string - Test ID
+ * @params {score}: number - Test score
+ * @params {passingScore}: number - Passing score
+ * @returns Updated progress with recalculated overall progress
+ */
 const updateTestProgress = async (userId, courseId, sectionId, testId, score, passingScore = 70) => {
   try {
     const course = await getCourseWithValidation(courseId);
+    
     const updated = await courseProgressRepository.updateTestProgress(
       userId,
       courseId,
@@ -234,6 +342,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       score,
       passingScore
     );
+    
     if (!updated) {
       const error = new Error('Failed to update test progress');
       error.statusCode = 500;
@@ -247,6 +356,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       course.metadata.totalVideos,
       course.metadata.totalTests
     );
+    
     if (recalculated.isCompleted && !recalculated.certificateIssued) {
       await courseProgressRepository.issueCertificate(userId, courseId);
       logger.info('Certificate issued automatically', { userId, courseId });
@@ -260,9 +370,17 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
   }
 };
 
+/**
+ * Issue certificate manually
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @returns Updated progress
+ */
 const issueCertificate = async (userId, courseId) => {
   try {
     const progress = await courseProgressRepository.getUserCourseProgress(userId, courseId);
+    
     if (!progress) {
       const error = new Error('Progress not found for this user and course');
       error.statusCode = 404;
@@ -291,6 +409,13 @@ const issueCertificate = async (userId, courseId) => {
   }
 };
 
+/**
+ * Check if user has access to course
+ * 
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @returns Boolean indicating access
+ */
 const hasAccessToCourse = async (userId, courseId) => {
   try {
     const progress = await courseProgressRepository.getUserCourseProgress(userId, courseId);
@@ -301,6 +426,15 @@ const hasAccessToCourse = async (userId, courseId) => {
   }
 };
 
+/**
+ * Add Pdfs to Course sections
+ * 
+ * @param {courseId}: string - Course ID
+ * @param {sectionId}: string - Section ID
+ * @param {pdfs}: Array - Array of PDFs
+ * @param {uploadedBy}: string - User ID
+ * @returns 
+ */
 const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
   try {
     const course = await Course.findById(courseId);
@@ -374,6 +508,14 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
   }
 };
 
+/**
+ * Removed PDF from Course section
+ * 
+ * @param {courseId}: string - Course ID
+ * @param {sectionId}: string - Section ID
+ * @param {pdfId}: string - PDF ID
+ * @returns 
+ */
 const removePdfFromSection = async (courseId, sectionId, pdfId) => {
   try {
     const course = await Course.findById(courseId);
@@ -438,6 +580,11 @@ const removePdfFromSection = async (courseId, sectionId, pdfId) => {
   }
 };
 
+/**
+ * Validate course structure
+ * 
+ * @params {sections}: array - Course sections
+ */
 const validateCourseStructure = (sections) => {
   if (!sections || sections.length === 0) {
     const error = new Error('Course must have at least one section');

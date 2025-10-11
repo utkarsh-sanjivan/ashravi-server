@@ -4,6 +4,14 @@ const courseService = require('../services/courseService');
 const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
+/**
+ * Create new course
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Created course
+ */
 const createCourse = async (req, res, next) => {
   try {
     const sanitizedData = sanitizeInput(req.body);
@@ -22,6 +30,14 @@ const createCourse = async (req, res, next) => {
   }
 };
 
+/**
+ * Get course by ID
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Course data
+ */
 const getCourse = async (req, res, next) => {
   try {
     const course = await courseService.getCourseWithValidation(req.params.id);
@@ -34,6 +50,14 @@ const getCourse = async (req, res, next) => {
   }
 };
 
+/**
+ * Get course by slug
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Course data
+ */
 const getCourseBySlug = async (req, res, next) => {
   try {
     const course = await courseService.getCourseBySlug(req.params.slug);
@@ -53,6 +77,14 @@ const getCourseBySlug = async (req, res, next) => {
   }
 };
 
+/**
+ * Get courses with pagination and filters
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Paginated courses
+ */
 const getCourses = async (req, res, next) => {
   try {
     const filters = {
@@ -65,6 +97,7 @@ const getCourses = async (req, res, next) => {
       maxPrice: req.query.maxPrice,
       search: req.query.search
     };
+
     Object.keys(filters).forEach(key =>
       filters[key] === undefined && delete filters[key]
     );
@@ -75,6 +108,7 @@ const getCourses = async (req, res, next) => {
     const sortOrder = req.query.sortOrder || 'desc';
 
     const result = await courseService.getCourses(filters, page, limit, sortBy, sortOrder);
+
     res.json({
       success: true,
       data: result.data,
@@ -85,10 +119,19 @@ const getCourses = async (req, res, next) => {
   }
 };
 
+/**
+ * Update course
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated course
+ */
 const updateCourse = async (req, res, next) => {
   try {
     const sanitizedData = sanitizeInput(req.body);
     const course = await courseService.updateCourse(req.params.id, sanitizedData);
+    
     res.json({
       success: true,
       message: 'Course updated successfully',
@@ -99,9 +142,19 @@ const updateCourse = async (req, res, next) => {
   }
 };
 
+
+/**
+ * Delete course
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Success message
+ */
 const deleteCourse = async (req, res, next) => {
   try {
     const deleted = await courseService.deleteCourse(req.params.id);
+    
     res.json({
       success: true,
       message: 'Course deleted successfully',
@@ -112,11 +165,21 @@ const deleteCourse = async (req, res, next) => {
   }
 };
 
+/**
+ * Enroll in course
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Enrollment data
+ */
 const enrollInCourse = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const courseId = req.params.id;
+
     const progress = await courseService.enrollInCourse(userId, courseId);
+
     res.json({
       success: true,
       message: 'Successfully enrolled in course',
@@ -127,11 +190,21 @@ const enrollInCourse = async (req, res, next) => {
   }
 };
 
+/**
+ * Get user's course progress
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Progress data
+ */
 const getUserCourseProgress = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const courseId = req.params.id;
+    
     const result = await courseService.getUserCourseProgress(userId, courseId);
+    
     res.json({
       success: true,
       data: result
@@ -141,11 +214,21 @@ const getUserCourseProgress = async (req, res, next) => {
   }
 };
 
+/**
+ * Get all user's progress
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Array of progress records
+ */
 const getUserProgress = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const limit = parseInt(req.query.limit) || 100;
+    
     const progress = await courseService.getUserProgress(userId, limit);
+    
     res.json({
       success: true,
       data: progress
@@ -155,11 +238,21 @@ const getUserProgress = async (req, res, next) => {
   }
 };
 
+
+/**
+ * Update video progress
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated progress
+ */
 const updateVideoProgress = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const courseId = req.params.id;
     const { sectionId, videoId, watchedDuration, totalDuration } = req.body;
+    
     const progress = await courseService.updateVideoProgress(
       userId,
       courseId,
@@ -168,6 +261,7 @@ const updateVideoProgress = async (req, res, next) => {
       watchedDuration,
       totalDuration
     );
+    
     res.json({
       success: true,
       message: 'Video progress updated successfully',
@@ -178,11 +272,20 @@ const updateVideoProgress = async (req, res, next) => {
   }
 };
 
+/**
+ * Update test progress
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated progress
+ */
 const updateTestProgress = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const courseId = req.params.id;
     const { sectionId, testId, score, passingScore } = req.body;
+    
     const progress = await courseService.updateTestProgress(
       userId,
       courseId,
@@ -191,6 +294,7 @@ const updateTestProgress = async (req, res, next) => {
       score,
       passingScore
     );
+    
     res.json({
       success: true,
       message: 'Test progress updated successfully',
@@ -201,11 +305,21 @@ const updateTestProgress = async (req, res, next) => {
   }
 };
 
+/**
+ * Issue certificate
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated progress with certificate
+ */
 const issueCertificate = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const courseId = req.params.id;
+    
     const progress = await courseService.issueCertificate(userId, courseId);
+    
     res.json({
       success: true,
       message: 'Certificate issued successfully',
@@ -216,6 +330,14 @@ const issueCertificate = async (req, res, next) => {
   }
 };
 
+/**
+ * Add PDFs to section
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns PDFs added to section
+ */
 const addPdfsToSection = async (req, res, next) => {
   try {
     const { courseId, sectionId } = req.params;
@@ -246,6 +368,14 @@ const addPdfsToSection = async (req, res, next) => {
   }
 };
 
+/**
+ * Remove PDF from section
+ * 
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns PDFs removed from a section
+ */
 const removePdfFromSection = async (req, res, next) => {
   try {
     const { courseId, sectionId, pdfId } = req.params;
