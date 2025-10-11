@@ -1,5 +1,12 @@
 const Joi = require('joi');
 
+const pdfSchema = Joi.object({
+  filename: Joi.string().required(),
+  url: Joi.string().uri().required(),
+  size: Joi.number().min(0).required(),
+  uploadedBy: Joi.string().length(24)
+});
+
 const videoSchema = Joi.object({
   title: Joi.string().required(),
   description: Joi.string().allow(''),
@@ -25,6 +32,9 @@ const sectionSchema = Joi.object({
   order: Joi.number().min(0).required(),
   videos: Joi.array().items(videoSchema).default([]),
   test: testSchema,
+  pdfs: Joi.array().max(3).items(pdfSchema).messages({
+    'array.max': 'A section cannot have more than 3 PDFs'
+  }),
   isLocked: Joi.boolean().default(false)
 });
 
@@ -108,6 +118,31 @@ const courseValidation = {
     testId: Joi.string().length(24).required(),
     score: Joi.number().min(0).max(100).required(),
     passingScore: Joi.number().min(0).max(100).default(70)
+  }),
+
+  addPdfs: Joi.object({
+    pdfs: Joi.array().min(1).max(3).required().items(
+      Joi.object({
+        filename: Joi.string().required(),
+        url: Joi.string().uri().required(),
+        size: Joi.number().min(0).required()
+      })
+    ).messages({
+      'array.min': 'At least one PDF is required',
+      'array.max': 'Cannot add more than 3 PDFs at once',
+      'any.required': 'PDFs array is required'
+    })
+  }),
+
+  sectionPdfParams: Joi.object({
+    courseId: Joi.string().length(24).required(),
+    sectionId: Joi.string().length(24).required()
+  }),
+
+  removePdfParams: Joi.object({
+    courseId: Joi.string().length(24).required(),
+    sectionId: Joi.string().length(24).required(),
+    pdfId: Joi.string().length(24).required()
   }),
 
   idParam: Joi.object({

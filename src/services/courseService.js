@@ -1,7 +1,10 @@
 const courseRepository = require('../repositories/courseRepository');
 const courseProgressRepository = require('../repositories/courseProgressRepository');
 const Parent = require('../models/Parent');
+const Course = require('../models/Course');
 const logger = require('../utils/logger');
+
+const MAX_PDFS_PER_SECTION = 3;
 
 /**
  * Create a new course
@@ -20,10 +23,10 @@ const createCourse = async (data) => {
     }
 
     validateCourseStructure(data.sections);
-
+    
     logger.info('Creating course', { title: data.title, instructor: data.instructor });
     const created = await courseRepository.createCourse(data);
-
+    
     if (!created) {
       const error = new Error('Failed to create course');
       error.statusCode = 500;
@@ -70,6 +73,7 @@ const getCourseWithValidation = async (courseId, populate = true) => {
     error.code = 'COURSE_NOT_FOUND';
     throw error;
   }
+
   return course;
 };
 
@@ -116,6 +120,7 @@ const getCourses = async (filters = {}, page = 1, limit = 20, sortBy = 'createdA
   }
 };
 
+
 /**
  * Update course
  * 
@@ -133,14 +138,14 @@ const updateCourse = async (courseId, data) => {
     }
 
     await getCourseWithValidation(courseId);
-
+    
     if (data.sections) {
       validateCourseStructure(data.sections);
     }
 
     logger.info('Updating course', { courseId });
     const updated = await courseRepository.updateCourse(courseId, data);
-
+    
     if (!updated) {
       const error = new Error('Failed to update course');
       error.statusCode = 500;
@@ -164,12 +169,12 @@ const updateCourse = async (courseId, data) => {
 const deleteCourse = async (courseId) => {
   try {
     if (!courseId) return false;
-
+    
     await getCourseWithValidation(courseId);
-
+    
     logger.info('Deleting course', { courseId });
     const deleted = await courseRepository.deleteCourse(courseId);
-
+    
     if (!deleted) {
       logger.warn('Failed to delete course', { courseId });
       return false;
@@ -193,7 +198,7 @@ const deleteCourse = async (courseId) => {
 const enrollInCourse = async (userId, courseId) => {
   try {
     const course = await getCourseWithValidation(courseId);
-
+    
     const user = await Parent.findById(userId);
     if (!user) {
       const error = new Error(`User with ID ${userId} not found`);
@@ -209,9 +214,8 @@ const enrollInCourse = async (userId, courseId) => {
     }
 
     await courseRepository.incrementEnrollment(courseId);
-
-    const progress = await courseProgressRepository.getOrCreateProgress(userId, courseId);
     
+    const progress = await courseProgressRepository.getOrCreateProgress(userId, courseId);
     logger.info('User enrolled in course', { userId, courseId });
     return progress;
   } catch (error) {
@@ -283,7 +287,7 @@ const getUserProgress = async (userId, limit = 100) => {
 const updateVideoProgress = async (userId, courseId, sectionId, videoId, watchedDuration, totalDuration) => {
   try {
     const course = await getCourseWithValidation(courseId);
-
+    
     const updated = await courseProgressRepository.updateVideoProgress(
       userId,
       courseId,
@@ -292,7 +296,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
       watchedDuration,
       totalDuration
     );
-
+    
     if (!updated) {
       const error = new Error('Failed to update video progress');
       error.statusCode = 500;
@@ -306,7 +310,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
       course.metadata.totalVideos,
       course.metadata.totalTests
     );
-
+    
     logger.info('Updated video progress', { userId, courseId, videoId, progress: recalculated.overallProgress });
     return recalculated;
   } catch (error) {
@@ -329,7 +333,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
 const updateTestProgress = async (userId, courseId, sectionId, testId, score, passingScore = 70) => {
   try {
     const course = await getCourseWithValidation(courseId);
-
+    
     const updated = await courseProgressRepository.updateTestProgress(
       userId,
       courseId,
@@ -338,7 +342,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       score,
       passingScore
     );
-
+    
     if (!updated) {
       const error = new Error('Failed to update test progress');
       error.statusCode = 500;
@@ -352,7 +356,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       course.metadata.totalVideos,
       course.metadata.totalTests
     );
-
+    
     if (recalculated.isCompleted && !recalculated.certificateIssued) {
       await courseProgressRepository.issueCertificate(userId, courseId);
       logger.info('Certificate issued automatically', { userId, courseId });
@@ -376,7 +380,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
 const issueCertificate = async (userId, courseId) => {
   try {
     const progress = await courseProgressRepository.getUserCourseProgress(userId, courseId);
-
+    
     if (!progress) {
       const error = new Error('Progress not found for this user and course');
       error.statusCode = 404;
@@ -419,6 +423,160 @@ const hasAccessToCourse = async (userId, courseId) => {
   } catch (error) {
     logger.error('Error checking course access', { userId, courseId, error: error.message });
     return false;
+  }
+};
+
+/**
+ * Add Pdfs to Course sections
+ * 
+ * @param {courseId}: string - Course ID
+ * @param {sectionId}: string - Section ID
+ * @param {pdfs}: Array - Array of PDFs
+ * @param {uploadedBy}: string - User ID
+ * @returns 
+ */
+const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
+  try {
+    const course = await Course.findById(courseId);
+
+    if (!course) {
+      const error = new Error('Course not found');
+      error.statusCode = 404;
+      error.code = 'COURSE_NOT_FOUND';
+      throw error;
+    }
+
+    const section = course.sections.id(sectionId);
+
+    if (!section) {
+      const error = new Error('Section not found');
+      error.statusCode = 404;
+      error.code = 'SECTION_NOT_FOUND';
+      throw error;
+    }
+
+    const currentPdfCount = section.pdfs.length;
+    const newPdfCount = pdfs.length;
+
+    if (currentPdfCount + newPdfCount > MAX_PDFS_PER_SECTION) {
+      const error = new Error(
+        `Section already has ${currentPdfCount} PDF(s). Cannot add ${newPdfCount} more. Maximum ${MAX_PDFS_PER_SECTION} PDFs per section.`
+      );
+      error.statusCode = 400;
+      error.code = 'PDF_LIMIT_EXCEEDED';
+      throw error;
+    }
+
+    const pdfMetadata = pdfs.map(pdf => ({
+      filename: pdf.filename,
+      url: pdf.url,
+      size: pdf.size,
+      uploadedBy,
+      uploadedAt: new Date()
+    }));
+
+    const result = await Course.findOneAndUpdate(
+      { _id: courseId, 'sections._id': sectionId },
+      { $push: { 'sections.$.pdfs': { $each: pdfMetadata } } },
+      { new: true, runValidators: true }
+    );
+
+    if (!result) {
+      const error = new Error('Failed to add PDFs to section');
+      error.statusCode = 500;
+      error.code = 'PDF_ADD_FAILED';
+      throw error;
+    }
+
+    const updatedSection = result.sections.id(sectionId);
+
+    logger.info('PDFs added to section', {
+      courseId,
+      sectionId,
+      pdfCount: newPdfCount,
+      uploadedBy
+    });
+
+    return updatedSection;
+  } catch (error) {
+    logger.error('Add PDFs to section failed', {
+      courseId,
+      sectionId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/**
+ * Removed PDF from Course section
+ * 
+ * @param {courseId}: string - Course ID
+ * @param {sectionId}: string - Section ID
+ * @param {pdfId}: string - PDF ID
+ * @returns 
+ */
+const removePdfFromSection = async (courseId, sectionId, pdfId) => {
+  try {
+    const course = await Course.findById(courseId);
+
+    if (!course) {
+      const error = new Error('Course not found');
+      error.statusCode = 404;
+      error.code = 'COURSE_NOT_FOUND';
+      throw error;
+    }
+
+    const section = course.sections.id(sectionId);
+
+    if (!section) {
+      const error = new Error('Section not found');
+      error.statusCode = 404;
+      error.code = 'SECTION_NOT_FOUND';
+      throw error;
+    }
+
+    const pdfExists = section.pdfs.some(pdf => 
+      pdf._id && pdf._id.toString() === pdfId
+    );
+
+    if (!pdfExists) {
+      const error = new Error('PDF not found in section');
+      error.statusCode = 404;
+      error.code = 'PDF_NOT_FOUND';
+      throw error;
+    }
+
+    const result = await Course.findOneAndUpdate(
+      { _id: courseId, 'sections._id': sectionId },
+      { $pull: { 'sections.$.pdfs': { _id: pdfId } } },
+      { new: true }
+    );
+
+    if (!result) {
+      const error = new Error('Failed to remove PDF from section');
+      error.statusCode = 500;
+      error.code = 'PDF_REMOVE_FAILED';
+      throw error;
+    }
+
+    const updatedSection = result.sections.id(sectionId);
+
+    logger.info('PDF removed from section', {
+      courseId,
+      sectionId,
+      pdfId
+    });
+
+    return updatedSection;
+  } catch (error) {
+    logger.error('Remove PDF from section failed', {
+      courseId,
+      sectionId,
+      pdfId,
+      error: error.message
+    });
+    throw error;
   }
 };
 
@@ -470,5 +628,7 @@ module.exports = {
   updateVideoProgress,
   updateTestProgress,
   issueCertificate,
-  hasAccessToCourse
+  hasAccessToCourse,
+  addPdfsToSection,
+  removePdfFromSection
 };
