@@ -85,13 +85,11 @@ const childSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    required: [true, 'Gender is required'],
     lowercase: true,
     trim: true
   },
   grade: {
     type: String,
-    required: [true, 'Grade is required'],
     uppercase: true,
     trim: true
   },
@@ -158,7 +156,6 @@ childSchema.pre('deleteMany', async function(next) {
     const Child = mongoose.model('Child');
     const children = await Child.find(this.getFilter());
     const childIds = children.map(c => c._id);
-    
     if (childIds.length > 0) {
       const ChildEducation = mongoose.model('ChildEducation');
       const ChildNutrition = mongoose.model('ChildNutrition');

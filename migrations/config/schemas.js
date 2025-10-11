@@ -1,48 +1,38 @@
-/*
- * Database Schema Definitions
- * 
- * Define all collection schemas here.
- * Each schema has a version number that increments with changes.
- */
-
 const schemas = {
   parents: {
-    version: 2,
+    version: 3,
     validator: {
       $jsonSchema: {
         bsonType: 'object',
-        required: ['name', 'email', 'password', 'phoneNumber', 'city', 'occupation'],
+        required: ['name', 'password'],
+        anyOf: [
+          { required: ['email'] },
+          { required: ['phoneNumber'] }
+        ],
         properties: {
           name: {
             bsonType: 'string',
-            maxLength: 100,
-            description: 'Parent name is required'
+            maxLength: 100
           },
           email: {
             bsonType: 'string',
-            pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
-            description: 'Valid email is required'
+            pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'
           },
           password: {
             bsonType: 'string',
-            minLength: 8,
-            description: 'Password must be at least 8 characters'
+            minLength: 8
           },
           phoneNumber: {
-            bsonType: 'string',
-            description: 'Phone number is required'
+            bsonType: 'string'
           },
           city: {
-            bsonType: 'string',
-            description: 'City is required'
+            bsonType: 'string'
           },
           economicStatus: {
-            enum: ['Lower Income', 'Middle Income', 'Upper Income'],
-            description: 'Economic status is optional'
+            enum: ['Lower Income', 'Middle Income', 'Upper Income']
           },
           occupation: {
-            bsonType: 'string',
-            description: 'Occupation is required'
+            bsonType: 'string'
           },
           childrenIds: {
             bsonType: 'array',
@@ -70,20 +60,16 @@ const schemas = {
       }
     },
     indexes: [
-      { key: { email: 1 }, unique: true, name: 'email_unique' },
-      { key: { phoneNumber: 1 }, name: 'phoneNumber_index' },
-      { key: { isActive: 1 }, name: 'isActive_index' },
-      { key: { city: 1 }, name: 'city_index' },
-      { key: { createdAt: -1 }, name: 'createdAt_desc' }
+      { key: { email: 1 }, unique: true, sparse: true, name: 'email_unique' },
+      { key: { phoneNumber: 1 }, name: 'phoneNumber_index' }
     ]
   },
-
   children: {
-    version: 1,
+    version: 2,
     validator: {
       $jsonSchema: {
         bsonType: 'object',
-        required: ['name', 'age', 'gender', 'grade', 'parentId'],
+        required: ['name', 'age', 'parentId'],
         properties: {
           name: { bsonType: 'string', maxLength: 100 },
           age: { bsonType: 'int', minimum: 0, maximum: 18 },
@@ -99,12 +85,9 @@ const schemas = {
     },
     indexes: [
       { key: { parentId: 1, createdAt: -1 }, name: 'parentId_createdAt' },
-      { key: { name: 'text' }, name: 'name_text' },
-      { key: { age: 1 }, name: 'age_index' },
-      { key: { grade: 1 }, name: 'grade_index' }
+      { key: { name: 'text' }, name: 'name_text' }
     ]
   },
-
   childeducations: {
     version: 1,
     validator: {
@@ -141,7 +124,6 @@ const schemas = {
       { key: { childId: 1 }, unique: true, name: 'childId_unique' }
     ]
   },
-
   childnutritions: {
     version: 1,
     validator: {
@@ -157,7 +139,6 @@ const schemas = {
       { key: { childId: 1 }, unique: true, name: 'childId_unique' }
     ]
   },
-
   otps: {
     version: 1,
     validator: {
@@ -182,56 +163,47 @@ const schemas = {
       { key: { createdAt: 1 }, expireAfterSeconds: 600, name: 'ttl_index' }
     ]
   },
-
   courses: {
-    version: 2,
+    version: 3,
     validator: {
       $jsonSchema: {
         bsonType: 'object',
-        required: ['title', 'headline', 'description', 'shortDescription', 'thumbnail', 'category', 'price', 'sections', 'instructor'],
+        required: ['title', 'description', 'shortDescription', 'thumbnail', 'category', 'price', 'sections'],
         properties: {
           title: {
             bsonType: 'string',
             minLength: 5,
-            maxLength: 200,
-            description: 'Course title is required'
+            maxLength: 200
           },
           slug: {
-            bsonType: 'string',
-            description: 'URL-friendly slug'
+            bsonType: 'string'
           },
           headline: {
             bsonType: 'string',
-            maxLength: 500,
-            description: 'Course headline is required'
+            maxLength: 500
           },
           description: {
             bsonType: 'string',
-            minLength: 50,
-            description: 'Course description is required'
+            minLength: 50
           },
           shortDescription: {
             bsonType: 'string',
-            maxLength: 300,
-            description: 'Short description is required'
+            maxLength: 300
           },
           thumbnail: {
-            bsonType: 'string',
-            description: 'Thumbnail URL is required'
+            bsonType: 'string'
           },
           coverImage: {
             bsonType: 'string'
           },
           category: {
-            bsonType: 'string',
-            description: 'Category is required'
+            bsonType: 'string'
           },
           subCategory: {
             bsonType: 'string'
           },
           level: {
-            enum: ['beginner', 'intermediate', 'advanced'],
-            description: 'Course level'
+            enum: ['beginner', 'intermediate', 'advanced']
           },
           language: {
             bsonType: 'string'
@@ -306,8 +278,7 @@ const schemas = {
             }
           },
           instructor: {
-            bsonType: 'objectId',
-            description: 'Instructor reference is required'
+            bsonType: 'objectId'
           },
           tags: {
             bsonType: 'array',
@@ -362,7 +333,6 @@ const schemas = {
       { key: { slug: 1 }, unique: true, name: 'slug_unique' },
       { key: { category: 1, isPublished: 1, createdAt: -1 }, name: 'category_published_date' },
       { key: { 'price.amount': 1, isPublished: 1 }, name: 'price_published' },
-      { key: { instructor: 1 }, name: 'instructor_index' },
       { key: { isPublished: 1 }, name: 'isPublished_index' },
       { key: { createdAt: -1 }, name: 'createdAt_desc' }
     ]

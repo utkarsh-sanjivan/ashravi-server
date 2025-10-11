@@ -143,7 +143,6 @@ const courseSchema = new mongoose.Schema({
   },
   headline: {
     type: String,
-    required: [true, 'Headline is required'],
     trim: true,
     maxlength: [500, 'Headline cannot exceed 500 characters']
   },
@@ -211,8 +210,7 @@ const courseSchema = new mongoose.Schema({
   },
   instructor: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Instructor is required']
+    ref: 'User'
   },
   tags: [{
     type: String,
@@ -296,7 +294,6 @@ courseSchema.virtual('hasDiscount').get(function() {
 courseSchema.index({ title: 'text', description: 'text', tags: 'text' });
 courseSchema.index({ category: 1, isPublished: 1, createdAt: -1 });
 courseSchema.index({ 'price.amount': 1, isPublished: 1 });
-courseSchema.index({ instructor: 1 });
 
 courseSchema.pre('save', function(next) {
   if (!this.slug && this.title) {
@@ -305,12 +302,10 @@ courseSchema.pre('save', function(next) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
   }
-
   if (this.isModified('sections')) {
     let totalDuration = 0;
     let totalVideos = 0;
     let totalTests = 0;
-
     this.sections.forEach(section => {
       if (section.videos) {
         totalVideos += section.videos.length;
@@ -322,7 +317,6 @@ courseSchema.pre('save', function(next) {
         totalTests++;
       }
     });
-
     this.metadata = {
       totalDuration,
       totalVideos,
@@ -330,11 +324,9 @@ courseSchema.pre('save', function(next) {
       lastUpdated: new Date()
     };
   }
-
   if (this.isModified('isPublished') && this.isPublished && !this.publishedAt) {
     this.publishedAt = new Date();
   }
-
   next();
 });
 

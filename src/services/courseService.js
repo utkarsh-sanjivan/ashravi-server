@@ -6,34 +6,30 @@ const logger = require('../utils/logger');
 
 const MAX_PDFS_PER_SECTION = 3;
 
-/**
- * Create a new course
- * 
- * @params {data}: object - Course data
- * @returns Created course object
- */
 const createCourse = async (data) => {
   try {
-    const instructor = await Parent.findById(data.instructor);
-    if (!instructor) {
-      const error = new Error(`Instructor with ID ${data.instructor} not found`);
-      error.statusCode = 404;
-      error.code = 'INSTRUCTOR_NOT_FOUND';
-      throw error;
+    if (data.instructor) {
+      const instructor = await Parent.findById(data.instructor);
+      if (!instructor) {
+        const error = new Error(`Instructor with ID ${data.instructor} not found`);
+        error.statusCode = 404;
+        error.code = 'INSTRUCTOR_NOT_FOUND';
+        throw error;
+      }
     }
-
+    
     validateCourseStructure(data.sections);
     
     logger.info('Creating course', { title: data.title, instructor: data.instructor });
     const created = await courseRepository.createCourse(data);
-    
+
     if (!created) {
       const error = new Error('Failed to create course');
       error.statusCode = 500;
       error.code = 'COURSE_CREATION_FAILED';
       throw error;
     }
-
+    
     return created;
   } catch (error) {
     logger.error('Error creating course', { error: error.message, data });
@@ -107,7 +103,7 @@ const getCourseBySlug = async (slug, populate = true) => {
 const getCourses = async (filters = {}, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc') => {
   try {
     const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-    
+
     if (typeof filters.tags === 'string') {
       filters.tags = filters.tags.split(',').map(tag => tag.trim());
     }
@@ -119,7 +115,6 @@ const getCourses = async (filters = {}, page = 1, limit = 20, sortBy = 'createdA
     throw error;
   }
 };
-
 
 /**
  * Update course
@@ -136,13 +131,13 @@ const updateCourse = async (courseId, data) => {
       error.code = 'COURSE_ID_REQUIRED';
       throw error;
     }
-
+    
     await getCourseWithValidation(courseId);
     
     if (data.sections) {
       validateCourseStructure(data.sections);
     }
-
+    
     logger.info('Updating course', { courseId });
     const updated = await courseRepository.updateCourse(courseId, data);
     
@@ -152,7 +147,7 @@ const updateCourse = async (courseId, data) => {
       error.code = 'COURSE_UPDATE_FAILED';
       throw error;
     }
-
+    
     return updated;
   } catch (error) {
     logger.error('Error updating course', { courseId, error: error.message });
@@ -171,15 +166,15 @@ const deleteCourse = async (courseId) => {
     if (!courseId) return false;
     
     await getCourseWithValidation(courseId);
-    
+
     logger.info('Deleting course', { courseId });
     const deleted = await courseRepository.deleteCourse(courseId);
-    
+
     if (!deleted) {
       logger.warn('Failed to delete course', { courseId });
       return false;
     }
-
+    
     logger.info('Successfully deleted course', { courseId });
     return true;
   } catch (error) {
@@ -206,15 +201,15 @@ const enrollInCourse = async (userId, courseId) => {
       error.code = 'USER_NOT_FOUND';
       throw error;
     }
-
+    
     const existingProgress = await courseProgressRepository.getUserCourseProgress(userId, courseId);
     if (existingProgress) {
       logger.info('User already enrolled', { userId, courseId });
       return existingProgress;
     }
-
-    await courseRepository.incrementEnrollment(courseId);
     
+    await courseRepository.incrementEnrollment(courseId);
+
     const progress = await courseProgressRepository.getOrCreateProgress(userId, courseId);
     logger.info('User enrolled in course', { userId, courseId });
     return progress;
@@ -237,7 +232,7 @@ const getUserCourseProgress = async (userId, courseId) => {
       getCourseWithValidation(courseId),
       courseProgressRepository.getUserCourseProgress(userId, courseId)
     ]);
-
+    
     if (!progress) {
       return {
         course,
@@ -245,7 +240,7 @@ const getUserCourseProgress = async (userId, courseId) => {
         isEnrolled: false
       };
     }
-
+    
     return {
       course,
       progress,
@@ -303,7 +298,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
       error.code = 'UPDATE_PROGRESS_FAILED';
       throw error;
     }
-
+    
     const recalculated = await courseProgressRepository.calculateOverallProgress(
       userId,
       courseId,
@@ -349,7 +344,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       error.code = 'UPDATE_PROGRESS_FAILED';
       throw error;
     }
-
+    
     const recalculated = await courseProgressRepository.calculateOverallProgress(
       userId,
       courseId,
@@ -361,7 +356,7 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
       await courseProgressRepository.issueCertificate(userId, courseId);
       logger.info('Certificate issued automatically', { userId, courseId });
     }
-
+    
     logger.info('Updated test progress', { userId, courseId, testId, score });
     return recalculated;
   } catch (error) {
@@ -387,19 +382,19 @@ const issueCertificate = async (userId, courseId) => {
       error.code = 'PROGRESS_NOT_FOUND';
       throw error;
     }
-
+    
     if (!progress.isCompleted) {
       const error = new Error('Course must be completed before issuing certificate');
       error.statusCode = 400;
       error.code = 'COURSE_NOT_COMPLETED';
       throw error;
     }
-
+    
     if (progress.certificateIssued) {
       logger.info('Certificate already issued', { userId, courseId });
       return progress;
     }
-
+    
     const updated = await courseProgressRepository.issueCertificate(userId, courseId);
     logger.info('Certificate issued', { userId, courseId });
     return updated;
@@ -445,7 +440,7 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       error.code = 'COURSE_NOT_FOUND';
       throw error;
     }
-
+    
     const section = course.sections.id(sectionId);
 
     if (!section) {
@@ -454,10 +449,10 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       error.code = 'SECTION_NOT_FOUND';
       throw error;
     }
-
+    
     const currentPdfCount = section.pdfs.length;
     const newPdfCount = pdfs.length;
-
+    
     if (currentPdfCount + newPdfCount > MAX_PDFS_PER_SECTION) {
       const error = new Error(
         `Section already has ${currentPdfCount} PDF(s). Cannot add ${newPdfCount} more. Maximum ${MAX_PDFS_PER_SECTION} PDFs per section.`
@@ -466,7 +461,7 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       error.code = 'PDF_LIMIT_EXCEEDED';
       throw error;
     }
-
+    
     const pdfMetadata = pdfs.map(pdf => ({
       filename: pdf.filename,
       url: pdf.url,
@@ -474,20 +469,20 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       uploadedBy,
       uploadedAt: new Date()
     }));
-
+    
     const result = await Course.findOneAndUpdate(
       { _id: courseId, 'sections._id': sectionId },
       { $push: { 'sections.$.pdfs': { $each: pdfMetadata } } },
       { new: true, runValidators: true }
     );
-
+    
     if (!result) {
       const error = new Error('Failed to add PDFs to section');
       error.statusCode = 500;
       error.code = 'PDF_ADD_FAILED';
       throw error;
     }
-
+    
     const updatedSection = result.sections.id(sectionId);
 
     logger.info('PDFs added to section', {
@@ -496,7 +491,7 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       pdfCount: newPdfCount,
       uploadedBy
     });
-
+    
     return updatedSection;
   } catch (error) {
     logger.error('Add PDFs to section failed', {
@@ -526,7 +521,7 @@ const removePdfFromSection = async (courseId, sectionId, pdfId) => {
       error.code = 'COURSE_NOT_FOUND';
       throw error;
     }
-
+    
     const section = course.sections.id(sectionId);
 
     if (!section) {
@@ -535,31 +530,31 @@ const removePdfFromSection = async (courseId, sectionId, pdfId) => {
       error.code = 'SECTION_NOT_FOUND';
       throw error;
     }
-
-    const pdfExists = section.pdfs.some(pdf => 
+    
+    const pdfExists = section.pdfs.some(pdf =>
       pdf._id && pdf._id.toString() === pdfId
     );
-
+    
     if (!pdfExists) {
       const error = new Error('PDF not found in section');
       error.statusCode = 404;
       error.code = 'PDF_NOT_FOUND';
       throw error;
     }
-
+    
     const result = await Course.findOneAndUpdate(
       { _id: courseId, 'sections._id': sectionId },
       { $pull: { 'sections.$.pdfs': { _id: pdfId } } },
       { new: true }
     );
-
+    
     if (!result) {
       const error = new Error('Failed to remove PDF from section');
       error.statusCode = 500;
       error.code = 'PDF_REMOVE_FAILED';
       throw error;
     }
-
+    
     const updatedSection = result.sections.id(sectionId);
 
     logger.info('PDF removed from section', {
@@ -567,7 +562,7 @@ const removePdfFromSection = async (courseId, sectionId, pdfId) => {
       sectionId,
       pdfId
     });
-
+    
     return updatedSection;
   } catch (error) {
     logger.error('Remove PDF from section failed', {
@@ -592,7 +587,7 @@ const validateCourseStructure = (sections) => {
     error.code = 'INVALID_COURSE_STRUCTURE';
     throw error;
   }
-
+  
   sections.forEach((section, sIndex) => {
     if (!section.title || section.title.trim().length === 0) {
       const error = new Error(`Section ${sIndex + 1} must have a title`);
@@ -600,7 +595,7 @@ const validateCourseStructure = (sections) => {
       error.code = 'INVALID_SECTION';
       throw error;
     }
-
+    
     if (section.videos && section.videos.length > 0) {
       section.videos.forEach((video, vIndex) => {
         if (!video.title || !video.videoUrl) {
