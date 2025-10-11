@@ -36,7 +36,7 @@ const parentSchema = new mongoose.Schema({
   economicStatus: {
     type: String,
     enum: ['Lower Income', 'Middle Income', 'Upper Income'],
-    required: [true, 'Economic status is required']
+    required: false  // ✅ CHANGED: Not required anymore
   },
   occupation: {
     type: String,
@@ -104,7 +104,7 @@ parentSchema.methods.getPublicProfile = function() {
     email: this.email,
     phoneNumber: this.phoneNumber,
     city: this.city,
-    economicStatus: this.economicStatus,
+    economicStatus: this.economicStatus,  // ✅ Will be undefined if not set
     occupation: this.occupation,
     childrenIds: this.childrenIds,
     childrenCount: this.childrenIds.length,

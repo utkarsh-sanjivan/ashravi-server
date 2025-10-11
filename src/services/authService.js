@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
  * Register a new parent
  * 
  * @params {parentData}: object - Parent registration data
- * @returns Object with parent profile and JWT token
+ * @returns Object with parent profile, access token, and refresh token
  */
 const register = async (parentData) => {
   const { name, email, password, phoneNumber, city, economicStatus, occupation } = parentData;
@@ -31,12 +31,14 @@ const register = async (parentData) => {
       occupation
     });
 
-    const token = parent.getSignedJwtToken();
+    // Generate BOTH tokens
+    const accessToken = parent.getSignedJwtToken();
     const refreshToken = parent.generateRefreshToken();
 
+    // Store refresh token in database
     parent.refreshTokens.push({
       token: refreshToken,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
     });
     await parent.save();
 
@@ -48,8 +50,8 @@ const register = async (parentData) => {
 
     return {
       parent: parent.getPublicProfile(),
-      token,
-      refreshToken
+      accessToken,      // ✅ MUST return this
+      refreshToken      // ✅ MUST return this
     };
   } catch (error) {
     logger.error('Parent registration failed', {
@@ -65,7 +67,7 @@ const register = async (parentData) => {
  * Login parent with credentials
  * 
  * @params {credentials}: object - Login credentials (email, password)
- * @returns Object with parent profile and JWT token
+ * @returns Object with parent profile, access token, and refresh token
  */
 const login = async (credentials) => {
   const { email, password } = credentials;
@@ -91,15 +93,20 @@ const login = async (credentials) => {
       throw error;
     }
 
+    // Update last login
     parent.lastLogin = new Date();
-    const token = parent.getSignedJwtToken();
+
+    // Generate BOTH tokens
+    const accessToken = parent.getSignedJwtToken();
     const refreshToken = parent.generateRefreshToken();
 
+    // Store refresh token in database
     parent.refreshTokens.push({
       token: refreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
+    // Keep only last 5 refresh tokens
     if (parent.refreshTokens.length > 5) {
       parent.refreshTokens = parent.refreshTokens.slice(-5);
     }
@@ -114,8 +121,8 @@ const login = async (credentials) => {
 
     return {
       parent: parent.getPublicProfile(),
-      token,
-      refreshToken
+      accessToken,      // ✅ MUST return this
+      refreshToken      // ✅ MUST return this
     };
   } catch (error) {
     logger.error('Parent login failed', {
@@ -246,7 +253,7 @@ const changePassword = async (parentId, currentPassword, newPassword) => {
     }
 
     parent.password = newPassword;
-    parent.refreshTokens = [];
+    parent.refreshTokens = []; // Invalidate all refresh tokens
     await parent.save();
 
     logger.info('Parent password changed successfully', {
@@ -299,11 +306,14 @@ const refresh = async (refreshToken) => {
       throw error;
     }
 
+    // Remove old refresh token
     parent.refreshTokens = parent.refreshTokens.filter(t => t.token !== refreshToken);
 
-    const newToken = parent.getSignedJwtToken();
+    // Generate new tokens
+    const newAccessToken = parent.getSignedJwtToken();
     const newRefreshToken = parent.generateRefreshToken();
 
+    // Store new refresh token
     parent.refreshTokens.push({
       token: newRefreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -317,8 +327,8 @@ const refresh = async (refreshToken) => {
     });
 
     return {
-      token: newToken,
-      refreshToken: newRefreshToken
+      accessToken: newAccessToken,      // ✅ Return new access token
+      refreshToken: newRefreshToken     // ✅ Return new refresh token
     };
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
