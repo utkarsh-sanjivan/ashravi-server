@@ -7,8 +7,8 @@ const { auth, authorize } = require('../middleware/auth');
 const router = express.Router();
 
 router.post('/',
-  // auth,
-  // authorize('admin', 'instructor'),
+  auth,
+  authorize('admin', 'instructor'),
   validateRequest(courseValidation.create),
   courseController.createCourse
 );
