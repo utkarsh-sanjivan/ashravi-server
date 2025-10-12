@@ -433,7 +433,7 @@ const validateUpdateData = (updateData) => {
     error.code = 'EMPTY_UPDATE_DATA';
     throw error;
   }
-
+  
   if ('age' in updateData) {
     const age = updateData.age;
     if (typeof age !== 'number' || age < 0 || age > 18) {
@@ -443,7 +443,7 @@ const validateUpdateData = (updateData) => {
       throw error;
     }
   }
-
+  
   if ('name' in updateData) {
     const name = updateData.name;
     if (!name || !name.trim()) {
@@ -452,6 +452,7 @@ const validateUpdateData = (updateData) => {
       error.code = 'INVALID_NAME';
       throw error;
     }
+    
     if (name.trim().length > 100) {
       const error = new Error('Name cannot exceed 100 characters');
       error.statusCode = 400;
@@ -459,27 +460,7 @@ const validateUpdateData = (updateData) => {
       throw error;
     }
   }
-
-  if ('grade' in updateData) {
-    const grade = updateData.grade;
-    if (!grade || !grade.trim()) {
-      const error = new Error('Grade cannot be empty');
-      error.statusCode = 400;
-      error.code = 'INVALID_GRADE';
-      throw error;
-    }
-  }
-
-  if ('gender' in updateData) {
-    const gender = updateData.gender;
-    if (!gender || !gender.trim()) {
-      const error = new Error('Gender cannot be empty');
-      error.statusCode = 400;
-      error.code = 'INVALID_GENDER';
-      throw error;
-    }
-  }
-
+  
   if ('parentId' in updateData) {
     const error = new Error('Parent ID cannot be changed after child creation');
     error.statusCode = 400;
@@ -487,6 +468,7 @@ const validateUpdateData = (updateData) => {
     throw error;
   }
 };
+
 
 /**
  * Get child with latest assessment
