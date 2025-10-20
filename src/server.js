@@ -21,7 +21,7 @@ class Server {
   constructor() {
     this.app = express();
     this.PORT = process.env.PORT || 3000;
-    this.HOST = process.env.HOST || 'localhost';
+    this.HOST = process.env.HOST || '0.0.0.0';
     this.server = null;
 
     this.initialize();
@@ -88,12 +88,20 @@ class Server {
     // CORS configuration
     const corsOptions = {
       origin: (origin, callback) => {
-        const allowedOrigins = process.env.CORS_ORIGIN 
+        const allowedOrigins = process.env.CORS_ORIGIN
           ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
           : ['http://localhost:3000'];
-
+        
         // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        
+        // Allow localhost and local network IPs
+        const isLocalNetwork = origin.match(/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):\d+$/);
+        
+        if (allowedOrigins.includes(origin) || isLocalNetwork) {
           callback(null, true);
         } else {
           callback(new Error('Not allowed by CORS'));
