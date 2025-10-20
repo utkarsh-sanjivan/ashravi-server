@@ -66,9 +66,9 @@ const commonValidation = {
 // Validation middleware factory
 const validateRequest = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, { 
+    const { error, value } = schema.validate(req.body, {
       abortEarly: false,
-      stripUnknown: true 
+      stripUnknown: true
     });
 
     if (error) {
@@ -93,9 +93,9 @@ const validateRequest = (schema) => {
 // Query validation middleware factory
 const validateQuery = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.query, { 
+    const { error, value } = schema.validate(req.query, {
       abortEarly: false,
-      stripUnknown: true 
+      stripUnknown: true
     });
 
     if (error) {
@@ -120,8 +120,8 @@ const validateQuery = (schema) => {
 // Params validation middleware factory
 const validateParams = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.params, { 
-      abortEarly: false 
+    const { error, value } = schema.validate(req.params, {
+      abortEarly: false
     });
 
     if (error) {
@@ -143,16 +143,27 @@ const validateParams = (schema) => {
   };
 };
 
-// Sanitize HTML to prevent XSS
-const sanitizeInput = (obj) => {
+const SAFE_FIELDS = new Set([
+  'videoUrl', 'thumbnail', 'coverImage', 'url', 'imageUrl', 
+  'videoThumbnail', 'pdfUrl', 'fileUrl', 'avatarUrl', 'profilePicture'
+]);
+
+const shouldEscapeField = (key) => {
+  return !SAFE_FIELDS.has(key) && !key.toLowerCase().includes('url') && !key.toLowerCase().includes('image');
+};
+
+const sanitizeInput = (obj, parentKey = '') => {
   if (typeof obj === 'string') {
-    return validator.escape(obj);
+    if (shouldEscapeField(parentKey)) {
+      return validator.escape(obj);
+    }
+    return obj;
   } else if (Array.isArray(obj)) {
-    return obj.map(sanitizeInput);
+    return obj.map((item, index) => sanitizeInput(item, parentKey));
   } else if (typeof obj === 'object' && obj !== null) {
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
-      sanitized[key] = sanitizeInput(value);
+      sanitized[key] = sanitizeInput(value, key);
     }
     return sanitized;
   }
