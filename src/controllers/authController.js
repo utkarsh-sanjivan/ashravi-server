@@ -1,6 +1,7 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
+const otpService = require('../services/otpService');
 
 /*
  * Register a new parent account
@@ -42,6 +43,44 @@ const login = async (req, res, next) => {
       success: true,
       message: 'Login successful',
       data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * Send OTP for parent signup/login verification
+ */
+const sendOtp = async (req, res, next) => {
+  try {
+    const sanitizedData = sanitizeInput(req.body);
+    const result = await otpService.sendOtp(sanitizedData);
+    const { message, ...data } = result;
+
+    res.json({
+      success: true,
+      message: message || 'OTP sent successfully',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * Verify OTP for parent signup/login
+ */
+const verifyOtp = async (req, res, next) => {
+  try {
+    const sanitizedData = sanitizeInput(req.body);
+    const result = await otpService.verifyOtp(sanitizedData);
+    const { message, ...data } = result;
+
+    res.json({
+      success: true,
+      message: message || 'OTP verified successfully',
+      data
     });
   } catch (error) {
     next(error);
@@ -200,6 +239,8 @@ const logout = async (req, res, next) => {
 module.exports = {
   register,
   login,
+  sendOtp,
+  verifyOtp,
   getProfile,
   updateProfile,
   changePassword,

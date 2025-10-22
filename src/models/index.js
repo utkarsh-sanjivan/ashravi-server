@@ -13,6 +13,7 @@ const Course = require('./Course');
 const CourseProgress = require('./CourseProgress');
 const Parent = require('./Parent');
 const Questions = require('./Questions');
+const Otp = require('./Otp');
 
 module.exports = {
   Child,
@@ -21,5 +22,6 @@ module.exports = {
   Course,
   CourseProgress,
   Parent,
-  Questions
+  Questions,
+  Otp
 };
