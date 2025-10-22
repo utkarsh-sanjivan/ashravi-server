@@ -18,6 +18,18 @@ router.post(
 );
 
 router.post(
+  '/otp/send',
+  validateRequest(authValidation.otpSend),
+  authController.sendOtp
+);
+
+router.post(
+  '/otp/verify',
+  validateRequest(authValidation.otpVerify),
+  authController.verifyOtp
+);
+
+router.post(
   '/refresh',
   validateRequest(authValidation.refresh),
   authController.refreshToken

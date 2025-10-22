@@ -40,6 +40,54 @@ const authValidation = {
       'any.required': 'Password is required'
     })
   }),
+  otpSend: Joi.object({
+    email: Joi.string().email().messages({
+      'string.email': 'Please provide a valid email'
+    }),
+    phoneNumber: Joi.string().trim().messages({
+      'string.empty': 'Phone number cannot be empty'
+    }),
+    purpose: Joi.string()
+      .valid('signup', 'login')
+      .required()
+      .messages({
+        'any.only': 'Purpose must be either signup or login',
+        'any.required': 'Purpose is required'
+      })
+  })
+    .xor('email', 'phoneNumber')
+    .messages({
+      'object.missing': 'Either email or phone number is required',
+      'object.xor': 'Provide either email or phone number, not both'
+    }),
+  otpVerify: Joi.object({
+    email: Joi.string().email().messages({
+      'string.email': 'Please provide a valid email'
+    }),
+    phoneNumber: Joi.string().trim().messages({
+      'string.empty': 'Phone number cannot be empty'
+    }),
+    purpose: Joi.string()
+      .valid('signup', 'login')
+      .required()
+      .messages({
+        'any.only': 'Purpose must be either signup or login',
+        'any.required': 'Purpose is required'
+      }),
+    otp: Joi.string()
+      .pattern(/^\d{6}$/)
+      .required()
+      .messages({
+        'string.empty': 'OTP is required',
+        'any.required': 'OTP is required',
+        'string.pattern.base': 'OTP must be a 6 digit code'
+      })
+  })
+    .xor('email', 'phoneNumber')
+    .messages({
+      'object.missing': 'Either email or phone number is required',
+      'object.xor': 'Provide either email or phone number, not both'
+    }),
   updateProfile: Joi.object({
     name: Joi.string().trim().max(100).messages({
       'string.max': 'Name cannot exceed 100 characters'
