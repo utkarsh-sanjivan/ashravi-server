@@ -9,6 +9,7 @@ const childrenRoutes = require('./childRoutes');
 const childEducationRoutes = require('./childEducationRoutes');
 const childNutritionRoutes = require('./childNutritionRoutes');
 const courseRoutes = require('./coursesRoutes');
+const instructorRoutes = require('./instructorsRoutes');
 const parentRoutes = require('./parentRoutes');
 const questionRoutes = require('./questionsRoutes');
 
@@ -66,6 +67,7 @@ router.use('/children', childrenRoutes);
 router.use('/child-education', childEducationRoutes);
 router.use('/child-nutrition', childNutritionRoutes);
 router.use('/courses', courseRoutes);
+router.use('/instructors', instructorRoutes);
 router.use('/parents', parentRoutes);
 router.use('/questions', questionRoutes);
 

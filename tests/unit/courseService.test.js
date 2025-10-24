@@ -1,11 +1,13 @@
 const courseService = require('../../src/services/courseService');
 const courseRepository = require('../../src/repositories/courseRepository');
 const courseProgressRepository = require('../../src/repositories/courseProgressRepository');
-const User = require('../../src/models/User');
+const Instructor = require('../../src/models/Instructor');
+const Parent = require('../../src/models/Parent');
 
 jest.mock('../../src/repositories/courseRepository');
 jest.mock('../../src/repositories/courseProgressRepository');
-jest.mock('../../src/models/User');
+jest.mock('../../src/models/Instructor');
+jest.mock('../../src/models/Parent');
 
 describe('Course Service - Unit Tests', () => {
   let mockInstructor;
@@ -18,9 +20,11 @@ describe('Course Service - Unit Tests', () => {
 
     mockInstructor = {
       _id: '507f1f77bcf86cd799439010',
-      name: 'Instructor Name',
+      firstName: 'Instructor',
+      lastName: 'Name',
       email: 'instructor@example.com',
-      role: 'instructor'
+      role: 'instructor',
+      isActive: true
     };
 
     mockUser = {
@@ -118,14 +122,14 @@ describe('Course Service - Unit Tests', () => {
         learningOutcomes: ['Outcome 1']
       };
 
-      User.findById = jest.fn().mockResolvedValue(mockInstructor);
+      Instructor.findById = jest.fn().mockResolvedValue(mockInstructor);
       courseRepository.createCourse = jest.fn().mockResolvedValue(mockCourse);
 
       const result = await courseService.createCourse(courseData);
 
       expect(result).toBeDefined();
       expect(result.title).toBe(mockCourse.title);
-      expect(User.findById).toHaveBeenCalledWith(courseData.instructor);
+      expect(Instructor.findById).toHaveBeenCalledWith(courseData.instructor);
       expect(courseRepository.createCourse).toHaveBeenCalledWith(courseData);
     });
 
@@ -140,7 +144,7 @@ describe('Course Service - Unit Tests', () => {
         learningOutcomes: ['Outcome 1']
       };
 
-      User.findById = jest.fn().mockResolvedValue(null);
+      Instructor.findById = jest.fn().mockResolvedValue(null);
 
       await expect(courseService.createCourse(courseData))
         .rejects
@@ -158,7 +162,7 @@ describe('Course Service - Unit Tests', () => {
         learningOutcomes: ['Outcome 1']
       };
 
-      User.findById = jest.fn().mockResolvedValue(mockInstructor);
+      Instructor.findById = jest.fn().mockResolvedValue(mockInstructor);
 
       await expect(courseService.createCourse(courseData))
         .rejects
@@ -176,7 +180,7 @@ describe('Course Service - Unit Tests', () => {
         learningOutcomes: ['Outcome 1']
       };
 
-      User.findById = jest.fn().mockResolvedValue(mockInstructor);
+      Instructor.findById = jest.fn().mockResolvedValue(mockInstructor);
 
       await expect(courseService.createCourse(courseData))
         .rejects
@@ -342,7 +346,7 @@ describe('Course Service - Unit Tests', () => {
      */
     it('should enroll user in course successfully', async () => {
       courseRepository.getCourse = jest.fn().mockResolvedValue(mockCourse);
-      User.findById = jest.fn().mockResolvedValue(mockUser);
+      Parent.findById = jest.fn().mockResolvedValue(mockUser);
       courseProgressRepository.getUserCourseProgress = jest.fn().mockResolvedValue(null);
       courseRepository.incrementEnrollment = jest.fn().mockResolvedValue(mockCourse);
       courseProgressRepository.getOrCreateProgress = jest.fn().mockResolvedValue(mockProgress);
@@ -359,7 +363,7 @@ describe('Course Service - Unit Tests', () => {
      */
     it('should return existing progress when already enrolled', async () => {
       courseRepository.getCourse = jest.fn().mockResolvedValue(mockCourse);
-      User.findById = jest.fn().mockResolvedValue(mockUser);
+      Parent.findById = jest.fn().mockResolvedValue(mockUser);
       courseProgressRepository.getUserCourseProgress = jest.fn().mockResolvedValue(mockProgress);
 
       const result = await courseService.enrollInCourse(mockUser._id, mockCourse._id);
@@ -373,7 +377,7 @@ describe('Course Service - Unit Tests', () => {
      */
     it('should throw error when user does not exist', async () => {
       courseRepository.getCourse = jest.fn().mockResolvedValue(mockCourse);
-      User.findById = jest.fn().mockResolvedValue(null);
+      Parent.findById = jest.fn().mockResolvedValue(null);
 
       await expect(courseService.enrollInCourse('507f1f77bcf86cd799439999', mockCourse._id))
         .rejects
