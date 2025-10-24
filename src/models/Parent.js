@@ -43,6 +43,10 @@ const parentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Child'
   }],
+  wishlistCourseIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Course'
+  }],
   isActive: {
     type: Boolean,
     default: true
@@ -110,6 +114,8 @@ parentSchema.methods.getPublicProfile = function() {
     occupation: this.occupation,
     childrenIds: this.childrenIds,
     childrenCount: this.childrenIds.length,
+    wishlistCourseIds: this.wishlistCourseIds || [],
+    wishlistCount: this.wishlistCourseIds ? this.wishlistCourseIds.length : 0,
     createdAt: this.createdAt,
     lastLogin: this.lastLogin
   };

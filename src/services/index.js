@@ -14,6 +14,7 @@ const courseService = require('./courseService');
 const parentService = require('./parentService');
 const questionService = require('./questionService');
 const otpService = require('./otpService');
+const notificationService = require('./notificationService');
 
 module.exports = {
   authService,
@@ -24,5 +25,6 @@ module.exports = {
   courseService,
   parentService,
   questionService,
-  otpService
+  otpService,
+  notificationService
 };

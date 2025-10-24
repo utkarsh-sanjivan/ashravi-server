@@ -23,6 +23,24 @@ const parentValidation = {
   removeChildParams: Joi.object({
     id: Joi.string().length(24).required(),
     childId: Joi.string().length(24).required()
+  }),
+
+  wishlistBody: Joi.object({
+    courseId: Joi.string().length(24).required().messages({
+      'string.length': 'Invalid course ID format',
+      'any.required': 'Course ID is required'
+    })
+  }),
+
+  wishlistParams: Joi.object({
+    id: Joi.string().length(24).required().messages({
+      'string.length': 'Invalid parent ID format',
+      'any.required': 'Parent ID is required'
+    }),
+    courseId: Joi.string().length(24).required().messages({
+      'string.length': 'Invalid course ID format',
+      'any.required': 'Course ID is required'
+    })
   })
 };
 

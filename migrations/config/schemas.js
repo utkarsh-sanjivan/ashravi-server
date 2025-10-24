@@ -1,6 +1,6 @@
 const schemas = {
   parents: {
-    version: 3,
+    version: 4,
     validator: {
       $jsonSchema: {
         bsonType: 'object',
@@ -35,6 +35,10 @@ const schemas = {
             bsonType: 'string'
           },
           childrenIds: {
+            bsonType: 'array',
+            items: { bsonType: 'objectId' }
+          },
+          wishlistCourseIds: {
             bsonType: 'array',
             items: { bsonType: 'objectId' }
           },
@@ -140,27 +144,27 @@ const schemas = {
     ]
   },
   otps: {
-    version: 1,
+    version: 2,
     validator: {
       $jsonSchema: {
         bsonType: 'object',
-        required: ['otp', 'type', 'purpose', 'expiresAt'],
+        required: ['contact', 'contactType', 'purpose', 'otp', 'expiresAt'],
         properties: {
-          email: { bsonType: 'string' },
-          phoneNumber: { bsonType: 'string' },
+          parentId: { bsonType: 'objectId' },
+          contact: { bsonType: 'string' },
+          contactType: { enum: ['email', 'phone'] },
+          purpose: { enum: ['signup', 'login'] },
           otp: { bsonType: 'string' },
-          type: { enum: ['email', 'phone'] },
-          purpose: { enum: ['registration', 'password-reset', 'login', 'verification'] },
           verified: { bsonType: 'bool' },
           attempts: { bsonType: 'int' },
-          expiresAt: { bsonType: 'date' }
+          expiresAt: { bsonType: 'date' },
+          verifiedAt: { bsonType: 'date' }
         }
       }
     },
     indexes: [
-      { key: { email: 1, type: 1, purpose: 1 }, name: 'email_type_purpose' },
-      { key: { phoneNumber: 1, type: 1, purpose: 1 }, name: 'phone_type_purpose' },
-      { key: { createdAt: 1 }, expireAfterSeconds: 600, name: 'ttl_index' }
+      { key: { contact: 1, purpose: 1, verified: 1 }, name: 'contact_purpose_verified' },
+      { key: { expiresAt: 1 }, expireAfterSeconds: 0, name: 'expiresAt_ttl' }
     ]
   },
   courses: {

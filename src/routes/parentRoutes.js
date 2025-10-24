@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const parentController = require('../controllers/parentController');
 const { auth, authorize } = require('../middleware/auth');
-const { validateParams, validateQuery } = require('../validations/commonValidation');
+const { validateParams, validateQuery, validateRequest } = require('../validations/commonValidation');
 const parentValidation = require('../validations/parentValidation');
 
 // Get parent by ID
@@ -44,6 +44,31 @@ router.delete(
   auth,
   validateParams(parentValidation.removeChildParams),
   parentController.removeChild
+);
+
+// Get wishlist for parent
+router.get(
+  '/:id/wishlist',
+  auth,
+  validateParams(parentValidation.idParam),
+  parentController.getWishlist
+);
+
+// Add course to wishlist
+router.post(
+  '/:id/wishlist',
+  auth,
+  validateParams(parentValidation.idParam),
+  validateRequest(parentValidation.wishlistBody),
+  parentController.addWishlistCourse
+);
+
+// Remove course from wishlist
+router.delete(
+  '/:id/wishlist/:courseId',
+  auth,
+  validateParams(parentValidation.wishlistParams),
+  parentController.removeWishlistCourse
 );
 
 // Delete parent
