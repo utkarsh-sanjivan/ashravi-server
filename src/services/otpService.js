@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Parent = require('../models/Parent');
 const Otp = require('../models/Otp');
 const logger = require('../utils/logger');
+const notificationService = require('./notificationService');
 
 const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || '5', 10);
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10);
@@ -25,7 +26,7 @@ const generateOtp = () => {
   return crypto.randomInt(100000, 1000000).toString();
 };
 
-const buildOtpResponse = (otpDoc, includeCode = false) => {
+const buildOtpResponse = (otpDoc, includeCode = false, delivery = undefined) => {
   const response = {
     otpId: otpDoc._id,
     contact: otpDoc.contact,
@@ -37,6 +38,16 @@ const buildOtpResponse = (otpDoc, includeCode = false) => {
 
   if (includeCode) {
     response.otp = otpDoc.otp;
+  }
+
+  if (delivery) {
+    response.delivery = {
+      channel: delivery.channel || otpDoc.contactType,
+      success: Boolean(delivery.success),
+      skipped: Boolean(delivery.skipped),
+      reference: delivery.messageId || delivery.sid || null,
+      reason: delivery.reason || null
+    };
   }
 
   return response;
@@ -83,10 +94,43 @@ const sendOtp = async ({ email, phoneNumber, purpose }) => {
     purpose
   });
 
+  let deliveryResult;
+
+  try {
+    if (contactType === 'email') {
+      const subject = 'Your Ashravi verification code';
+      const text = `Your Ashravi verification code is ${otpCode}. This code expires in ${OTP_EXPIRY_MINUTES} minutes.`;
+      const html = `<p>Your Ashravi verification code is <strong>${otpCode}</strong>.</p><p>This code expires in ${OTP_EXPIRY_MINUTES} minutes.</p>`;
+
+      deliveryResult = await notificationService.sendEmail({
+        to: contactValue,
+        subject,
+        text,
+        html
+      });
+    } else {
+      const body = `Your Ashravi verification code is ${otpCode}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`;
+      deliveryResult = await notificationService.sendSms({
+        to: contactValue,
+        body
+      });
+    }
+  } catch (error) {
+    logger.error('OTP delivery failed', {
+      contactType,
+      contactValue,
+      purpose,
+      error: error.message
+    });
+
+    await otpDoc.deleteOne();
+    throw error;
+  }
+
   const includeCode = process.env.NODE_ENV !== 'production';
   return {
     message: 'OTP sent successfully',
-    ...buildOtpResponse(otpDoc, includeCode)
+    ...buildOtpResponse(otpDoc, includeCode, deliveryResult)
   };
 };
 

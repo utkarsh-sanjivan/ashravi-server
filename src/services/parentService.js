@@ -1,6 +1,45 @@
 const Parent = require('../models/Parent');
 const Child = require('../models/Child');
+const Course = require('../models/Course');
 const logger = require('../utils/logger');
+
+const loadWishlistCourses = async (wishlistCourseIds = []) => {
+  if (!Array.isArray(wishlistCourseIds) || wishlistCourseIds.length === 0) {
+    return [];
+  }
+
+  const ids = wishlistCourseIds.map(id => id.toString());
+
+  const courses = await Course.find({
+    _id: { $in: ids },
+    isPublished: true
+  })
+    .select('title slug thumbnail coverImage category subCategory level price rating metadata publishedAt')
+    .lean();
+
+  const courseMap = new Map();
+  courses.forEach(course => {
+    courseMap.set(course._id.toString(), course);
+  });
+
+  return ids
+    .map(id => courseMap.get(id))
+    .filter(Boolean)
+    .map(course => ({
+      id: course._id.toString(),
+      title: course.title,
+      slug: course.slug,
+      thumbnail: course.thumbnail,
+      coverImage: course.coverImage,
+      category: course.category,
+      subCategory: course.subCategory,
+      level: course.level,
+      price: course.price,
+      rating: course.rating,
+      metadata: course.metadata,
+      publishedAt: course.publishedAt
+    }));
+};
 
 /*
  * Get parent by ID
@@ -106,6 +145,147 @@ const getChildrenForParent = async (parentId) => {
   } catch (error) {
     logger.error('Get children for parent failed', {
       parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Get wishlist courses for parent
+ *
+ * @params {parentId}: string - Parent ID
+ * @returns Array of course summaries
+ */
+const getWishlistForParent = async (parentId) => {
+  try {
+    const parent = await Parent.findById(parentId);
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    const wishlist = await loadWishlistCourses(parent.wishlistCourseIds);
+
+    logger.info('Retrieved parent wishlist', {
+      parentId,
+      wishlistCount: wishlist.length
+    });
+
+    return wishlist;
+  } catch (error) {
+    logger.error('Get wishlist for parent failed', {
+      parentId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Add course to parent wishlist
+ *
+ * @params {parentId}: string - Parent ID
+ * @params {courseId}: string - Course ID
+ * @returns Array of course summaries
+ */
+const addCourseToWishlist = async (parentId, courseId) => {
+  try {
+    const parent = await Parent.findById(parentId);
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    if (!Array.isArray(parent.wishlistCourseIds)) {
+      parent.wishlistCourseIds = [];
+    }
+
+    if (parent.wishlistCourseIds.some(id => id.equals(courseId))) {
+      return await loadWishlistCourses(parent.wishlistCourseIds);
+    }
+
+    const course = await Course.findOne({
+      _id: courseId,
+      isPublished: true
+    }).select('_id');
+
+    if (!course) {
+      const error = new Error('Course not found or not available');
+      error.statusCode = 404;
+      error.code = 'COURSE_NOT_FOUND';
+      throw error;
+    }
+
+    parent.wishlistCourseIds.push(course._id);
+    await parent.save();
+
+    logger.info('Course added to parent wishlist', {
+      parentId,
+      courseId,
+      action: 'add_wishlist_course'
+    });
+
+    return await loadWishlistCourses(parent.wishlistCourseIds);
+  } catch (error) {
+    logger.error('Add course to wishlist failed', {
+      parentId,
+      courseId,
+      error: error.message
+    });
+    throw error;
+  }
+};
+
+/*
+ * Remove course from parent wishlist
+ *
+ * @params {parentId}: string - Parent ID
+ * @params {courseId}: string - Course ID
+ * @returns Array of course summaries
+ */
+const removeCourseFromWishlist = async (parentId, courseId) => {
+  try {
+    const parent = await Parent.findById(parentId);
+
+    if (!parent || !parent.isActive) {
+      const error = new Error('Parent not found');
+      error.statusCode = 404;
+      error.code = 'PARENT_NOT_FOUND';
+      throw error;
+    }
+
+    if (!Array.isArray(parent.wishlistCourseIds) || parent.wishlistCourseIds.length === 0) {
+      return [];
+    }
+
+    const updatedWishlist = parent.wishlistCourseIds.filter(id => !id.equals(courseId));
+
+    if (updatedWishlist.length === parent.wishlistCourseIds.length) {
+      return await loadWishlistCourses(parent.wishlistCourseIds);
+    }
+
+    parent.wishlistCourseIds = updatedWishlist;
+    parent.markModified('wishlistCourseIds');
+    await parent.save();
+
+    logger.info('Course removed from parent wishlist', {
+      parentId,
+      courseId,
+      action: 'remove_wishlist_course'
+    });
+
+    return await loadWishlistCourses(parent.wishlistCourseIds);
+  } catch (error) {
+    logger.error('Remove course from wishlist failed', {
+      parentId,
+      courseId,
       error: error.message
     });
     throw error;
@@ -283,8 +463,11 @@ module.exports = {
   getParentByEmail,
   getParentsByCity,
   getChildrenForParent,
+  getWishlistForParent,
   addChildToParent,
+  addCourseToWishlist,
   removeChildFromParent,
+  removeCourseFromWishlist,
   deleteParent,
   countParents
 };

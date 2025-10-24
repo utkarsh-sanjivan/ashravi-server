@@ -126,6 +126,80 @@ const removeChild = async (req, res, next) => {
 };
 
 /*
+ * Get wishlist for parent
+ *
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Array of wishlist courses
+ */
+const getWishlist = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const wishlist = await parentService.getWishlistForParent(id);
+
+    res.json({
+      success: true,
+      data: wishlist,
+      count: wishlist.length
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * Add course to parent wishlist
+ *
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated wishlist
+ */
+const addWishlistCourse = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { courseId } = sanitizeInput(req.body);
+
+    const wishlist = await parentService.addCourseToWishlist(id, courseId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Course added to wishlist successfully',
+      data: wishlist,
+      count: wishlist.length
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+ * Remove course from parent wishlist
+ *
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated wishlist
+ */
+const removeWishlistCourse = async (req, res, next) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const wishlist = await parentService.removeCourseFromWishlist(id, courseId);
+
+    res.json({
+      success: true,
+      message: 'Course removed from wishlist successfully',
+      data: wishlist,
+      count: wishlist.length
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
  * Delete parent
  * 
  * @params {req}: Request - Express request object
@@ -178,6 +252,9 @@ module.exports = {
   getChildren,
   addChild,
   removeChild,
+  getWishlist,
+  addWishlistCourse,
+  removeWishlistCourse,
   deleteParent,
   getStats
 };
