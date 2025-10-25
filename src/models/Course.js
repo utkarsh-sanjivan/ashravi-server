@@ -184,6 +184,12 @@ const courseSchema = new mongoose.Schema({
     default: 'English',
     trim: true
   },
+  textLanguage: {
+    type: String,
+    default: 'english',
+    lowercase: true,
+    select: false
+  },
   price: {
     amount: {
       type: Number,
@@ -210,7 +216,7 @@ const courseSchema = new mongoose.Schema({
   },
   instructor: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'Instructor'
   },
   tags: [{
     type: String,
@@ -291,7 +297,13 @@ courseSchema.virtual('hasDiscount').get(function() {
   return this.price.discountedPrice && this.price.discountedPrice < this.price.amount;
 });
 
-courseSchema.index({ title: 'text', description: 'text', tags: 'text' });
+courseSchema.index(
+  { title: 'text', description: 'text', tags: 'text' },
+  {
+    default_language: 'english',
+    language_override: 'textLanguage'
+  }
+);
 courseSchema.index({ category: 1, isPublished: 1, createdAt: -1 });
 courseSchema.index({ 'price.amount': 1, isPublished: 1 });
 

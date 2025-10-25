@@ -2,7 +2,6 @@ const Course = require('../models/Course');
 const CourseProgress = require('../models/CourseProgress');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
-const { decodeUrls } = require('../utils/urlUtils');
 
 const IMMUTABLE_FIELDS = new Set(['_id', 'id', 'createdAt', 'enrollmentCount', 'slug']);
 
@@ -31,7 +30,7 @@ const formatDocument = (document) => {
   if (!document) return document;
   const formatted = document.toObject ? document.toObject() : { ...document };
   formatted.id = formatted._id.toString();
-  return decodeUrls(formatted);
+  return formatted;
 };
 
 /**
@@ -73,7 +72,7 @@ const getCourse = async (courseId, populate = false) => {
 
     let query = Course.findById(objectId);
     if (populate) {
-      query = query.populate('instructor', 'name email');
+      query = query.populate('instructor', 'firstName lastName email profileImage expertiseAreas yearsOfExperience isActive');
     }
 
     const course = await query.lean();
@@ -95,7 +94,7 @@ const getCourseBySlug = async (slug, populate = false) => {
   try {
     let query = Course.findOne({ slug });
     if (populate) {
-      query = query.populate('instructor', 'name email');
+      query = query.populate('instructor', 'firstName lastName email profileImage expertiseAreas yearsOfExperience isActive');
     }
 
     const course = await query.lean();
@@ -157,7 +156,7 @@ const getCourses = async (filters = {}, page = 1, limit = 20, sort = { createdAt
 
     const [courses, total] = await Promise.all([
       Course.find(query)
-        .populate('instructor', 'name email')
+        .populate('instructor', 'firstName lastName email profileImage expertiseAreas yearsOfExperience isActive')
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -211,7 +210,7 @@ const updateCourse = async (courseId, data) => {
       objectId,
       { $set: sanitizedData },
       { new: true, runValidators: true }
-    ).populate('instructor', 'name email').lean();
+    ).populate('instructor', 'firstName lastName email profileImage expertiseAreas yearsOfExperience isActive').lean();
 
     if (!updated) {
       logger.warn('Course not found for update', { courseId });

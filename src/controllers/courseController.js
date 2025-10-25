@@ -15,9 +15,6 @@ const { sanitizeInput } = require('../validations/commonValidation');
 const createCourse = async (req, res, next) => {
   try {
     const sanitizedData = sanitizeInput(req.body);
-    if (!sanitizedData.instructor && req.user && req.user.id) {
-      sanitizedData.instructor = req.user.id;
-    }
 
     const course = await courseService.createCourse(sanitizedData);
     res.status(201).json({

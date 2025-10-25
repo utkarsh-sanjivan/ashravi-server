@@ -1,6 +1,7 @@
 const courseRepository = require('../repositories/courseRepository');
 const courseProgressRepository = require('../repositories/courseProgressRepository');
 const Parent = require('../models/Parent');
+const Instructor = require('../models/Instructor');
 const Course = require('../models/Course');
 const logger = require('../utils/logger');
 
@@ -9,8 +10,8 @@ const MAX_PDFS_PER_SECTION = 3;
 const createCourse = async (data) => {
   try {
     if (data.instructor) {
-      const instructor = await Parent.findById(data.instructor);
-      if (!instructor) {
+      const instructor = await Instructor.findById(data.instructor);
+      if (!instructor || !instructor.isActive) {
         const error = new Error(`Instructor with ID ${data.instructor} not found`);
         error.statusCode = 404;
         error.code = 'INSTRUCTOR_NOT_FOUND';
@@ -133,6 +134,16 @@ const updateCourse = async (courseId, data) => {
     }
     
     await getCourseWithValidation(courseId);
+
+    if (data.instructor) {
+      const instructor = await Instructor.findById(data.instructor);
+      if (!instructor || !instructor.isActive) {
+        const error = new Error(`Instructor with ID ${data.instructor} not found`);
+        error.statusCode = 404;
+        error.code = 'INSTRUCTOR_NOT_FOUND';
+        throw error;
+      }
+    }
     
     if (data.sections) {
       validateCourseStructure(data.sections);

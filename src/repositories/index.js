@@ -11,6 +11,7 @@ const childNutritionRepository = require('./childNutritionRepository');
 const courseRepository = require('./courseRepository');
 const courseProgressRepository = require('./courseProgressRepository');
 const parentRepository = require('./parentRepository');
+const instructorRepository = require('./instructorRepository');
 const questionRepository = require('./questionRepository');
 
 module.exports = {
@@ -20,5 +21,6 @@ module.exports = {
   courseRepository,
   courseProgressRepository,
   parentRepository,
+  instructorRepository,
   questionRepository
 };

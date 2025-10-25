@@ -14,6 +14,7 @@ const { validateRequest, validateParams, validateQuery, sanitizeInput } = requir
 const courseValidation = require('./courseValidation');
 const parentValidation = require('./parentValidation');
 const questionValidation = require('./questionValidation');
+const instructorValidation = require('./instructorValidation');
 
 module.exports = {
   assessmentValidation,
@@ -29,5 +30,6 @@ module.exports = {
   
   courseValidation,
   parentValidation,
-  questionValidation
+  questionValidation,
+  instructorValidation
 };

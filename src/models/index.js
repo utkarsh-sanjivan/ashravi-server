@@ -12,6 +12,7 @@ const ChildNutrition = require('./ChildNutrition');
 const Course = require('./Course');
 const CourseProgress = require('./CourseProgress');
 const Parent = require('./Parent');
+const Instructor = require('./Instructor');
 const Questions = require('./Questions');
 const Otp = require('./Otp');
 
@@ -22,6 +23,7 @@ module.exports = {
   Course,
   CourseProgress,
   Parent,
+  Instructor,
   Questions,
   Otp
 };

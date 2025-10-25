@@ -8,6 +8,7 @@ const childController = require('./childController');
 const childEducationController = require('./childEducationController');
 const childNutritionController = require('./childNutritionController');
 const courseController = require('./courseController');
+const instructorController = require('./instructorController');
 const parentController = require('./parentController');
 const questionController = require('./questionController');
 
@@ -18,6 +19,7 @@ module.exports = {
   childEducationController,
   childNutritionController,
   courseController,
+  instructorController,
   parentController,
   questionController
 };
