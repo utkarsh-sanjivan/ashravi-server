@@ -2,7 +2,6 @@ const Course = require('../models/Course');
 const CourseProgress = require('../models/CourseProgress');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
-const { decodeUrls } = require('../utils/urlUtils');
 
 const IMMUTABLE_FIELDS = new Set(['_id', 'id', 'createdAt', 'enrollmentCount', 'slug']);
 
@@ -31,7 +30,7 @@ const formatDocument = (document) => {
   if (!document) return document;
   const formatted = document.toObject ? document.toObject() : { ...document };
   formatted.id = formatted._id.toString();
-  return decodeUrls(formatted);
+  return formatted;
 };
 
 /**
