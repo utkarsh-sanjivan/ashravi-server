@@ -74,6 +74,13 @@ router.post('/:id/progress/test',
   courseController.updateTestProgress
 );
 
+router.patch('/:id/progress/notes',
+  auth,
+  validateParams(courseValidation.idParam),
+  validateRequest(courseValidation.updateCourseNotes),
+  courseController.updateCourseNotes
+);
+
 router.post('/:id/certificate',
   auth,
   validateParams(courseValidation.idParam),

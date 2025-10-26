@@ -115,6 +115,9 @@ const courseValidation = {
     score: Joi.number().min(0).max(100).required(),
     passingScore: Joi.number().min(0).max(100).default(70)
   }),
+  updateCourseNotes: Joi.object({
+    notes: Joi.string().allow('').max(5000).required()
+  }),
   addPdfs: Joi.object({
     pdfs: Joi.array().min(1).max(3).required().items(
       Joi.object({
