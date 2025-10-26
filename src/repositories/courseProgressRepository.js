@@ -54,7 +54,8 @@ const getOrCreateProgress = async (userId, courseId) => {
         userId: userObjectId,
         courseId: courseObjectId,
         sections: [],
-        overallProgress: 0
+        overallProgress: 0,
+        notes: ''
       });
 
       const saved = await newProgress.save();
@@ -284,6 +285,49 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
 };
 
 /**
+ * Update course notes for a user
+ *
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @params {notes}: string - Notes content
+ * @returns Updated progress
+ */
+const updateCourseNotes = async (userId, courseId, notes) => {
+  try {
+    const userObjectId = validateObjectId(userId);
+    const courseObjectId = validateObjectId(courseId);
+
+    if (!userObjectId || !courseObjectId) return null;
+
+    const updated = await CourseProgress.findOneAndUpdate(
+      { userId: userObjectId, courseId: courseObjectId },
+      {
+        $set: {
+          notes,
+          lastAccessedAt: new Date()
+        },
+        $setOnInsert: {
+          sections: [],
+          overallProgress: 0,
+          enrolledAt: new Date()
+        }
+      },
+      { new: true, upsert: true }
+    ).lean();
+
+    if (updated) {
+      logger.info('Updated course notes', { userId, courseId });
+      return formatDocument(updated);
+    }
+
+    return null;
+  } catch (error) {
+    logger.error('Error updating course notes', { userId, courseId, error: error.message });
+    throw error;
+  }
+};
+
+/**
  * Calculate and update overall progress
  * 
  * @params {userId}: string - User ID
@@ -374,5 +418,6 @@ module.exports = {
   updateVideoProgress,
   updateTestProgress,
   calculateOverallProgress,
-  issueCertificate
+  issueCertificate,
+  updateCourseNotes
 };

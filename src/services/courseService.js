@@ -339,7 +339,7 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
 const updateTestProgress = async (userId, courseId, sectionId, testId, score, passingScore = 70) => {
   try {
     const course = await getCourseWithValidation(courseId);
-    
+
     const updated = await courseProgressRepository.updateTestProgress(
       userId,
       courseId,
@@ -377,8 +377,37 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
 };
 
 /**
+ * Update notes for a user's course progress
+ *
+ * @params {userId}: string - User ID
+ * @params {courseId}: string - Course ID
+ * @params {notes}: string - Notes content
+ * @returns Updated progress with notes
+ */
+const updateCourseNotes = async (userId, courseId, notes) => {
+  try {
+    await getCourseWithValidation(courseId);
+
+    const updated = await courseProgressRepository.updateCourseNotes(userId, courseId, notes);
+
+    if (!updated) {
+      const error = new Error('Failed to update course notes');
+      error.statusCode = 500;
+      error.code = 'UPDATE_NOTES_FAILED';
+      throw error;
+    }
+
+    logger.info('Updated course notes', { userId, courseId });
+    return updated;
+  } catch (error) {
+    logger.error('Error updating course notes', { userId, courseId, error: error.message });
+    throw error;
+  }
+};
+
+/**
  * Issue certificate manually
- * 
+ *
  * @params {userId}: string - User ID
  * @params {courseId}: string - Course ID
  * @returns Updated progress
@@ -633,6 +662,7 @@ module.exports = {
   getUserProgress,
   updateVideoProgress,
   updateTestProgress,
+  updateCourseNotes,
   issueCertificate,
   hasAccessToCourse,
   addPdfsToSection,

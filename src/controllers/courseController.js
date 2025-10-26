@@ -303,8 +303,34 @@ const updateTestProgress = async (req, res, next) => {
 };
 
 /**
+ * Update course notes
+ *
+ * @params {req}: Request - Express request object
+ * @params {res}: Response - Express response object
+ * @params {next}: Function - Next middleware
+ * @returns Updated progress with notes
+ */
+const updateCourseNotes = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const courseId = req.params.id;
+    const { notes } = req.body;
+
+    const progress = await courseService.updateCourseNotes(userId, courseId, notes);
+
+    res.json({
+      success: true,
+      message: 'Course notes updated successfully',
+      data: progress
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Issue certificate
- * 
+ *
  * @params {req}: Request - Express request object
  * @params {res}: Response - Express response object
  * @params {next}: Function - Next middleware
@@ -405,6 +431,7 @@ module.exports = {
   getUserProgress,
   updateVideoProgress,
   updateTestProgress,
+  updateCourseNotes,
   issueCertificate,
   addPdfsToSection,
   removePdfFromSection
