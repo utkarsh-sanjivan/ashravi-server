@@ -2,7 +2,7 @@ const express = require('express');
 const { validateRequest, validateParams, validateQuery } = require('../validations/commonValidation');
 const courseValidation = require('../validations/courseValidation');
 const courseController = require('../controllers/courseController');
-const { auth, authorize } = require('../middleware/auth');
+const { auth, authorize, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -14,6 +14,7 @@ router.post('/',
 );
 
 router.get('/',
+  optionalAuth,
   validateQuery(courseValidation.query),
   courseController.getCourses
 );
@@ -24,12 +25,16 @@ router.get('/my-progress',
 );
 
 router.get('/slug/:slug',
+  optionalAuth,
   validateParams(courseValidation.slugParam),
+  validateQuery(courseValidation.parentQuery),
   courseController.getCourseBySlug
 );
 
 router.get('/:id',
+  optionalAuth,
   validateParams(courseValidation.idParam),
+  validateQuery(courseValidation.parentQuery),
   courseController.getCourse
 );
 

@@ -7,6 +7,14 @@ const logger = require('../utils/logger');
 
 const MAX_PDFS_PER_SECTION = 3;
 
+const cloneCourseForResponse = (course) => {
+  if (!course) return course;
+  if (typeof course.toObject === 'function') {
+    return course.toObject();
+  }
+  return { ...course };
+};
+
 const createCourse = async (data) => {
   try {
     if (data.instructor) {
@@ -444,6 +452,45 @@ const issueCertificate = async (userId, courseId) => {
   }
 };
 
+const attachWishlistStatus = async (courses, parentId) => {
+  if (!parentId || !courses) {
+    return courses;
+  }
+
+  try {
+    const parent = await Parent.findById(parentId).select('wishlistCourseIds');
+    const wishlistCourseIds = parent?.wishlistCourseIds || [];
+    const wishlistSet = new Set(wishlistCourseIds.map(id => id.toString()));
+
+    const applyWishlistFlag = (course) => {
+      if (!course) return course;
+      const courseObject = cloneCourseForResponse(course);
+      const courseId = courseObject?._id
+        ? courseObject._id.toString()
+        : courseObject?.id
+          ? courseObject.id.toString()
+          : null;
+
+      return {
+        ...courseObject,
+        isWishlisted: courseId ? wishlistSet.has(courseId) : false
+      };
+    };
+
+    if (Array.isArray(courses)) {
+      return courses.map(applyWishlistFlag);
+    }
+
+    return applyWishlistFlag(courses);
+  } catch (error) {
+    logger.error('Error attaching wishlist status to courses', {
+      parentId,
+      error: error.message
+    });
+    return courses;
+  }
+};
+
 /**
  * Check if user has access to course
  * 
@@ -666,5 +713,6 @@ module.exports = {
   issueCertificate,
   hasAccessToCourse,
   addPdfsToSection,
-  removePdfFromSection
+  removePdfFromSection,
+  attachWishlistStatus
 };

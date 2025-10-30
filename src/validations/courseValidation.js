@@ -101,7 +101,8 @@ const courseValidation = {
     maxPrice: Joi.number().min(0),
     search: Joi.string(),
     sortBy: Joi.string().valid('createdAt', 'updatedAt', 'enrollmentCount', 'title').default('createdAt'),
-    sortOrder: Joi.string().valid('asc', 'desc').default('desc')
+    sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
+    parentId: Joi.string().length(24)
   }),
   updateVideoProgress: Joi.object({
     sectionId: Joi.string().length(24).required(),
@@ -145,6 +146,9 @@ const courseValidation = {
   }),
   slugParam: Joi.object({
     slug: Joi.string().required()
+  }),
+  parentQuery: Joi.object({
+    parentId: Joi.string().length(24)
   })
 };
 
