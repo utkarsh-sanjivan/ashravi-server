@@ -4,6 +4,38 @@ const courseService = require('../services/courseService');
 const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
+const ensureAuthenticatedParentQuery = (req, res) => {
+  const { parentId } = req.query || {};
+
+  if (!parentId) {
+    return true;
+  }
+
+  const authenticatedParentId = req.user?.id?.toString();
+
+  if (!authenticatedParentId) {
+    res.status(401).json({
+      success: false,
+      error: 'Authentication required',
+      message: 'Authorization token is required when parentId is provided',
+      code: 'AUTH_TOKEN_REQUIRED'
+    });
+    return false;
+  }
+
+  if (authenticatedParentId !== parentId) {
+    res.status(403).json({
+      success: false,
+      error: 'Forbidden',
+      message: 'You are not authorized to access data for this parent',
+      code: 'PARENT_MISMATCH'
+    });
+    return false;
+  }
+
+  return true;
+};
+
 /**
  * Create new course
  * 
@@ -37,10 +69,22 @@ const createCourse = async (req, res, next) => {
  */
 const getCourse = async (req, res, next) => {
   try {
+    const { parentId } = req.query;
+
+    if (!ensureAuthenticatedParentQuery(req, res)) {
+      return;
+    }
+
+    const resolvedParentId = parentId ? req.user.id : null;
     const course = await courseService.getCourseWithValidation(req.params.id);
+
+    const responseCourse = resolvedParentId
+      ? await courseService.attachWishlistStatus(course, resolvedParentId)
+      : course;
+
     res.json({
       success: true,
-      data: course
+      data: responseCourse
     });
   } catch (error) {
     next(error);
@@ -57,6 +101,13 @@ const getCourse = async (req, res, next) => {
  */
 const getCourseBySlug = async (req, res, next) => {
   try {
+    const { parentId } = req.query;
+
+    if (!ensureAuthenticatedParentQuery(req, res)) {
+      return;
+    }
+
+    const resolvedParentId = parentId ? req.user.id : null;
     const course = await courseService.getCourseBySlug(req.params.slug);
     if (!course) {
       return res.status(404).json({
@@ -65,9 +116,13 @@ const getCourseBySlug = async (req, res, next) => {
       });
     }
 
+    const responseCourse = resolvedParentId
+      ? await courseService.attachWishlistStatus(course, resolvedParentId)
+      : course;
+
     res.json({
       success: true,
-      data: course
+      data: responseCourse
     });
   } catch (error) {
     next(error);
@@ -84,6 +139,14 @@ const getCourseBySlug = async (req, res, next) => {
  */
 const getCourses = async (req, res, next) => {
   try {
+    const { parentId } = req.query;
+
+    if (!ensureAuthenticatedParentQuery(req, res)) {
+      return;
+    }
+
+    const resolvedParentId = parentId ? req.user.id : null;
+
     const filters = {
       category: req.query.category,
       level: req.query.level,
@@ -106,9 +169,13 @@ const getCourses = async (req, res, next) => {
 
     const result = await courseService.getCourses(filters, page, limit, sortBy, sortOrder);
 
+    const courses = resolvedParentId
+      ? await courseService.attachWishlistStatus(result.data, resolvedParentId)
+      : result.data;
+
     res.json({
       success: true,
-      data: result.data,
+      data: courses,
       pagination: result.pagination
     });
   } catch (error) {
