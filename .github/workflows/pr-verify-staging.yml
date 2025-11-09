@@ -3,6 +3,10 @@ name: Verify Staging Build
 on:
   pull_request:
 
+env:
+  AWS_REGION: ap-south-1
+  AWS_DEFAULT_REGION: ap-south-1
+
 jobs:
   build:
     name: Build & Test (Staging)
