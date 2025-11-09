@@ -3,7 +3,7 @@ import { ImageResponse } from 'next/og';
 import { getMiddlewarePreloadedState, initializeServerStore } from '@/lib/redux-ssr';
 import { selectMetadataSnapshot } from '@/store/selectors/metadata.selectors';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 const WIDTH = 1200;
 const HEIGHT = 630;
