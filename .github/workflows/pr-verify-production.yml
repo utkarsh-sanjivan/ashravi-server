@@ -1,23 +1,12 @@
-name: Verify Deploy Workflows
+name: Verify Production Build
 
 on:
   pull_request:
 
-env:
-  AWS_REGION: ap-south-1
-  AWS_DEFAULT_REGION: ap-south-1
-
 jobs:
   build:
-    name: Build & Test (${{ matrix.target }})
+    name: Build & Test (Production)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - target: Staging
-            artifact: staging-export
-          - target: Production
-            artifact: production-export
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,6 +35,6 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: production-export
           path: out
           if-no-files-found: error
