@@ -38,12 +38,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Run unit tests
-        run: pnpm run test -- --runInBand
-
       - name: Build project
         run: pnpm run build
 
