@@ -1,0 +1,58 @@
+name: Verify Deploy Workflows
+
+on:
+  pull_request:
+
+env:
+  AWS_REGION: ap-south-1
+  AWS_DEFAULT_REGION: ap-south-1
+  NODE_ENV: production
+
+jobs:
+  build:
+    name: Build & Test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: Staging
+            artifact: staging-export
+          - target: Production
+            artifact: production-export
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Run unit tests
+        run: pnpm run test -- --runInBand
+
+      - name: Build project
+        run: pnpm run build
+
+      - name: Generate static export
+        run: pnpm exec next export -o out
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out
+          if-no-files-found: error
