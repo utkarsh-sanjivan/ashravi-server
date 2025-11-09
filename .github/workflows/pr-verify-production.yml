@@ -34,7 +34,7 @@ jobs:
         run: pnpm run build
 
       - name: Generate static export
-        run: pnpm exec next export -o out
+        run: pnpm exec next export --outdir out
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
