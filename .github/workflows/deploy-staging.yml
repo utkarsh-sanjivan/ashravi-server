@@ -54,22 +54,22 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::12}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "image_uri=${{ secrets.ECR_REPOSITORY }}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${{ secrets.ECR_REPO_STAGING }}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
       - name: Build Docker image
         env:
           DOCKER_BUILDKIT: 1
         run: docker build --platform linux/amd64 -t ${{ steps.image.outputs.image_uri }} .
       - name: Tag image as latest
         run: |
-          docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPOSITORY }}:latest
+          docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_STAGING }}:latest
       - name: Push images to ECR
         run: |
           docker push ${{ steps.image.outputs.image_uri }}
-          docker push ${{ secrets.ECR_REPOSITORY }}:latest
+          docker push ${{ secrets.ECR_REPO_STAGING }}:latest
       - name: Force ECS deployment
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-          ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
+          ECS_SERVICE: ${{ secrets.ECS_SERVICE_STAGING }}
         run: |
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
@@ -77,4 +77,4 @@ jobs:
             --force-new-deployment
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"
+            --services "$ECS_SERVICE"ECS_CLUSTER
