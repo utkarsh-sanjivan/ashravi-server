@@ -1,5 +1,4 @@
 const parentService = require('../services/parentService');
-const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
 /*

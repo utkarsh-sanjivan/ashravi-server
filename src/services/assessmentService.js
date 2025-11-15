@@ -318,7 +318,7 @@ const buildAssessmentResult = (issueScores, method, conductedBy, totalQuestions)
 
   issues.sort((a, b) => b.score - a.score);
 
-  const overallSummary = generateOverallSummary(issues, primaryConcerns);
+  const overallSummary = generateOverallSummary(issues);
 
   return {
     assessmentId,
@@ -341,11 +341,9 @@ const buildAssessmentResult = (issueScores, method, conductedBy, totalQuestions)
  * Generate overall assessment summary
  * 
  * @params {issues}: array - Assessed issues
- * @params {primaryConcerns}: array - Primary concerns
  * @returns Summary text
  */
-const generateOverallSummary = (issues, primaryConcerns) => {
-  const normalCount = issues.filter(i => i.severity === 'normal').length;
+const generateOverallSummary = (issues) => {
   const borderlineCount = issues.filter(i => i.severity === 'borderline').length;
   const clinicalCount = issues.filter(i => i.severity === 'clinical').length;
 

@@ -1,5 +1,4 @@
 const authService = require('../services/authService');
-const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 const otpService = require('../services/otpService');
 

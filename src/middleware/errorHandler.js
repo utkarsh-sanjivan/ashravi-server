@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
  * @params {next}: Function - Express next function
  * @returns Error response
  */
-const handle = (err, req, res, next) => {
+const handle = (err, req, res, _next) => {
   let error = { ...err };
   error.message = err.message;
 
