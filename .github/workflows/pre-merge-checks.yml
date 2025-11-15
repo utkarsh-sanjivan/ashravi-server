@@ -1,0 +1,12 @@
+name: Pre-merge Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+
+jobs:
+  lint_test:
+    uses: ./.github/workflows/lint-and-test.yml

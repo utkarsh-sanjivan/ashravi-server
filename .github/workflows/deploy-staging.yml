@@ -15,23 +15,7 @@ concurrency:
 
 jobs:
   lint_test:
-    name: Lint and Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Run lint
-        run: npm run lint
-      - name: Run tests
-        run: npm test -- --watch=false
+    uses: ./.github/workflows/lint-and-test.yml
 
   deploy:
     name: Build and Deploy to Staging
@@ -77,4 +61,4 @@ jobs:
             --force-new-deployment
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"ECS_CLUSTER
+            --services "$ECS_SERVICE"

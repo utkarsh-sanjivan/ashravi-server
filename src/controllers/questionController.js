@@ -1,5 +1,4 @@
 const questionService = require('../services/questionService');
-const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
 /**

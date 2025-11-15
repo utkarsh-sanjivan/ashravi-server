@@ -211,7 +211,7 @@ const deleteCourse = async (courseId) => {
  */
 const enrollInCourse = async (userId, courseId) => {
   try {
-    const course = await getCourseWithValidation(courseId);
+    await getCourseWithValidation(courseId);
     
     const user = await Parent.findById(userId);
     if (!user) {

@@ -53,12 +53,12 @@ const analyzePerformance = (records) => {
   });
 
   const subjectsNeedingAttention = Array.from(subjectMap.entries())
-    .filter(([_, marks]) => marks < 60)
+    .filter(([, marks]) => marks < 60)
     .map(([subject]) => subject)
     .slice(0, 3);
 
   const topPerformingSubjects = Array.from(subjectMap.entries())
-    .filter(([_, marks]) => marks >= 85)
+    .filter(([, marks]) => marks >= 85)
     .map(([subject]) => subject)
     .slice(0, 3);
 

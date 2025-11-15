@@ -158,7 +158,7 @@ class Server {
     // Body parsing middleware with size limits
     this.app.use(express.json({ 
       limit: process.env.MAX_JSON_SIZE || '10mb',
-      verify: (req, res, buf, encoding) => {
+      verify: (req, res, buf, _encoding) => {
         req.rawBody = buf;
       }
     }));
@@ -185,7 +185,7 @@ class Server {
         stream: { 
           write: (message) => logger.http(message.trim()) 
         },
-        skip: (req, res) => req.url === '/health-check' // Skip health check logs
+        skip: (req, _res) => req.url === '/health-check' // Skip health check logs
       }));
     }
 
@@ -418,7 +418,7 @@ class Server {
 
 // Only start server if this file is executed directly
 if (require.main === module) {
-  const server = new Server();
+  new Server();
 }
 
 module.exports = { Server };

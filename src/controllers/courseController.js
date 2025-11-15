@@ -1,7 +1,6 @@
 // Added addPdfsToSection and removePdfFromSection controllers
 
 const courseService = require('../services/courseService');
-const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
 const ensureAuthenticatedParentQuery = (req, res) => {

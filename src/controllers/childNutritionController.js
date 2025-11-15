@@ -1,5 +1,4 @@
 const childNutritionService = require('../services/childNutritionService');
-const logger = require('../utils/logger');
 const { sanitizeInput } = require('../validations/commonValidation');
 
 /**

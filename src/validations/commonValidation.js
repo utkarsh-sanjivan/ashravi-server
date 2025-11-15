@@ -159,7 +159,7 @@ const sanitizeInput = (obj, parentKey = '') => {
     }
     return obj;
   } else if (Array.isArray(obj)) {
-    return obj.map((item, index) => sanitizeInput(item, parentKey));
+    return obj.map((item) => sanitizeInput(item, parentKey));
   } else if (typeof obj === 'object' && obj !== null) {
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
