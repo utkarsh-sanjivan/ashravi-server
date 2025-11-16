@@ -23,24 +23,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          audience: ${{ secrets.AWS_OIDC_AUDIENCE || vars.AWS_OIDC_AUDIENCE || 'sts.amazonaws.com' }}      
-      
+
+      # --------------------------------------------------------
+      # 1) Checkout repo
+      # --------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # 2) Prepare OIDC variables needed for token request
+      # --------------------------------------------------------
       - name: Prepare OIDC variables
-        id: prepare
         run: |
           echo "ACTIONS_ID_TOKEN_REQUEST_URL=${ACTIONS_ID_TOKEN_REQUEST_URL}" >> $GITHUB_ENV
           echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> $GITHUB_ENV
 
+      # --------------------------------------------------------
+      # 3) Generate OIDC token from GitHub
+      # --------------------------------------------------------
       - name: Generate OIDC Token
         id: oidc
         run: |
@@ -49,32 +49,53 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r '.value')
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+      # --------------------------------------------------------
+      # 4) Decode OIDC token to view actual claims
+      # --------------------------------------------------------
       - name: Decode OIDC Token Claims
         run: |
           echo "🔍 OIDC Claims:"
           TOKEN=${{ steps.oidc.outputs.token }}
           echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq .
 
+      # --------------------------------------------------------
+      # 5) NOW configure AWS credentials (AFTER we print claims)
+      # --------------------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          audience: ${{ secrets.AWS_OIDC_AUDIENCE || vars.AWS_OIDC_AUDIENCE || 'sts.amazonaws.com' }}
+
+      # --------------------------------------------------------
+      # 6) ECS + Docker build and deploy steps
+      # --------------------------------------------------------
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
       - name: Set image metadata
         id: image
         run: |
           SHORT_SHA="${GITHUB_SHA::12}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${{ secrets.ECR_REPO_STAGING }}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Build Docker image
         env:
           DOCKER_BUILDKIT: 1
         run: docker build --platform linux/amd64 -t ${{ steps.image.outputs.image_uri }} .
+
       - name: Tag image as latest
         run: |
           docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_STAGING }}:latest
+
       - name: Push images to ECR
         run: |
           docker push ${{ steps.image.outputs.image_uri }}
           docker push ${{ secrets.ECR_REPO_STAGING }}:latest
+
       - name: Force ECS deployment
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
