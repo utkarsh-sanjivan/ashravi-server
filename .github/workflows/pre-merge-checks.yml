@@ -1,5 +1,8 @@
 name: Pre-merge Checks
 
+permissions:
+  contents: read
+  id-token: write
 on:
   pull_request:
     branches:
@@ -15,7 +18,7 @@ jobs:
   environment_validation:
     name: Verify modules for ${{ matrix.environment }}
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref == 'production'
+    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref == 'production' || github.event.pull_request.base.ref == 'main'
     strategy:
       matrix:
         environment: [staging, production]
