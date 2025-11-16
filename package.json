@@ -19,7 +19,8 @@
     "db:drop": "node scripts/dropMongoDB.js",
     "migrate": "node scripts/migrate.js migrate",
     "migrate:status": "node scripts/migrate.js status",
-    "migrate:rollback": "node scripts/migrate.js rollback"
+    "migrate:rollback": "node scripts/migrate.js rollback",
+    "verify:imports": "node scripts/verify-imports.js"
   },
   "keywords": [
     "nodejs",
