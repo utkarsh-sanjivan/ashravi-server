@@ -61,7 +61,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-          audience: ${{ secrets.AWS_OIDC_AUDIENCE || vars.AWS_OIDC_AUDIENCE || 'sts.amazonaws.com' }}
+          audience: 'sts.amazonaws.com'
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
       - name: Set image metadata
@@ -108,7 +108,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-          audience: ${{ secrets.AWS_OIDC_AUDIENCE || vars.AWS_OIDC_AUDIENCE || 'sts.amazonaws.com' }}
+          audience: 'sts.amazonaws.com'
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
       - name: Set image metadata
