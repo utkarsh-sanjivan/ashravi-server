@@ -42,9 +42,6 @@ COPY --from=builder /usr/src/app/src ./src
 # Create logs directory and set permissions
 RUN mkdir -p logs && chown -R nodejs:nodejs logs
 
-# Copy other necessary files
-COPY --chown=nodejs:nodejs .env.example .env
-
 # Switch to non-root user
 USER nodejs
 
