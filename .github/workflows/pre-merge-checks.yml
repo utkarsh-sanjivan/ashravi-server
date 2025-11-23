@@ -103,6 +103,15 @@ jobs:
             echo "Missing required secrets for production deployment validation" >&2
             exit 1
           fi
+      - name: Log AWS credential inputs (debug)
+        run: |
+          echo "role-to-assume=${{ secrets.AWS_ROLE_ARN }}"
+          echo "aws-region=${{ secrets.AWS_REGION }}"
+          echo "audience=sts.amazonaws.com"
+          echo "ref=${GITHUB_REF}"
+          echo "repository=${GITHUB_REPOSITORY}"
+          echo "actor=${GITHUB_ACTOR}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
