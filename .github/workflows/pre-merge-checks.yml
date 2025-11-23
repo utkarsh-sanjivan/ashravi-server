@@ -57,14 +57,6 @@ jobs:
             echo "Missing required secrets for staging deployment validation" >&2
             exit 1
           fi
-      - name: Log AWS credential inputs (debug)
-        run: |
-          echo "role-to-assume=${{ secrets.AWS_ROLE_ARN }}"
-          echo "aws-region=${{ secrets.AWS_REGION }}"
-          echo "audience=sts.amazonaws.com"
-          echo "ref=${GITHUB_REF}"
-          echo "repository=${GITHUB_REPOSITORY}"
-          echo "actor=${GITHUB_ACTOR}"
 
       - name: Prepare OIDC variables
         run: |
@@ -89,10 +81,8 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          audience: 'sts.amazonaws.com'
+          audience: sts.amazonaws.com
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
       - name: Set image metadata
