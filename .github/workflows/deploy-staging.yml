@@ -27,12 +27,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      ##########################################################
+      # 1) Prepare OIDC variables (required to request a token)
+      ##########################################################
+      - name: Prepare OIDC variables
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL=${ACTIONS_ID_TOKEN_REQUEST_URL}" >> $GITHUB_ENV
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> $GITHUB_ENV
+
+      ##########################################################
+      # 2) Generate the actual OIDC token GitHub is issuing
+      ##########################################################
+      - name: Generate OIDC Token
+        id: oidc
+        run: |
+          RESPONSE=$(curl -sSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      ##########################################################
+      # 3) Decode OIDC Token to see exact 'sub', 'aud', 'iss'
+      ##########################################################
+      - name: Decode OIDC Token Claims
+        run: |
+          echo "🔍 OIDC Claims:"
+          TOKEN=${{ steps.oidc.outputs.token }}
+          echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq .
+
+      ##########################################################
+      # 4) NOW configure AWS credentials using correct audience
+      ##########################################################
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-          audience: 'sts.amazonaws.com'
+          audience: sts.amazonaws.com
+
+      ##########################################################
+      # 5) ECS Deploy Steps
+      ##########################################################
 
       - name: Login to Amazon ECR
         id: login-ecr
