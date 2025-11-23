@@ -58,15 +58,7 @@ jobs:
       ##########################################################
       # 3b) Log inputs that will be used by configure-aws-credentials
       ##########################################################
-      - name: Log AWS credential inputs (debug)
-        run: |
-          echo "role-to-assume=${{ secrets.AWS_ROLE_ARN }}"
-          echo "aws-region=${{ secrets.AWS_REGION }}"
-          echo "audience=sts.amazonaws.com"
-          echo "ref=${GITHUB_REF}"
-          echo "repository=${GITHUB_REPOSITORY}"
-          echo "actor=${GITHUB_ACTOR}"
-
+      
       ##########################################################
       # 4) NOW configure AWS credentials using correct audience
       ##########################################################
