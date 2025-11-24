@@ -1,54 +1,37 @@
-# Multi-stage build for production
-FROM node:18-alpine AS builder
+# Lightweight Node.js image
+FROM node:18-alpine
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files
-COPY package*.json ./
-
-# Install all dependencies (including devDependencies for building)
-RUN npm ci
-
-# Copy source code
-COPY . .
-
-# Run tests and linting (optional - comment out for faster builds)
-# RUN npm run test
-# RUN npm run lint
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create app directory
-WORKDIR /usr/src/app
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
-
-# Install curl for health checks
+# Install curl for healthchecks
 RUN apk add --no-cache curl
 
-# Copy package files
+# Copy package files first (for better layer caching)
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# NOTE: make sure "uuid" is in "dependencies" in package.json
+RUN npm ci --omit=dev
 
-# Copy built application from builder stage
-COPY --from=builder /usr/src/app/src ./src
+# Copy the rest of the application source
+COPY . .
 
-# Create logs directory and set permissions
-RUN mkdir -p logs && chown -R nodejs:nodejs logs
+# Create non-root user and logs directory
+RUN addgroup -S nodejs && adduser -S nodejs -G nodejs \
+  && mkdir -p logs \
+  && chown -R nodejs:nodejs logs
 
 # Switch to non-root user
 USER nodejs
 
-# Expose port
+# Environment
+ENV NODE_ENV=production
+
+# Expose app port
 EXPOSE 3000
 
-# Health check
+# Health check (make sure /health-check route exists in your app)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health-check || exit 1
 
