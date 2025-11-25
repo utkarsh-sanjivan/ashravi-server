@@ -1,7 +1,7 @@
 const Child = require('../models/Child');
 const Question = require('../models/Questions');
 const ASSESSMENT_CONSTANTS = require('../constants/assessmentConstants');
-const { randomUUID } = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
 /**
@@ -264,7 +264,7 @@ const determineSeverity = (issueId, score, method) => {
  * @returns Complete assessment result object
  */
 const buildAssessmentResult = (issueScores, method, conductedBy, totalQuestions) => {
-  const assessmentId = randomUUID();
+  const assessmentId = uuidv4();
   const issues = [];
   const primaryConcerns = [];
   const recommendations = [];

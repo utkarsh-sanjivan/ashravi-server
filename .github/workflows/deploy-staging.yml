@@ -22,17 +22,53 @@ jobs:
     needs: lint_test
     runs-on: ubuntu-latest
     environment: staging
-    steps:
 
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      ############################################################
+      # 1) Prepare OIDC variables (Needed for requesting a token)
+      ############################################################
+      - name: Prepare OIDC Variables
+        id: prep
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL=${ACTIONS_ID_TOKEN_REQUEST_URL}" >> $GITHUB_ENV
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> $GITHUB_ENV
+
+      ############################################################
+      # 2) Fetch the actual OIDC token GitHub generates
+      ############################################################
+      - name: Generate OIDC Token
+        id: oidc
+        run: |
+          RESPONSE=$(curl -sSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      ############################################################
+      # 3) Decode and print OIDC claims (THIS is what AWS checks)
+      ############################################################
+      - name: Decode OIDC Token Claims
+        run: |
+          TOKEN=${{ steps.oidc.outputs.token }}
+          echo "🔍 Decoded OIDC token claims:"
+          echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq .
+
+      ############################################################
+      # 4) Configure AWS Credentials (ONLY AFTER debugging)
+      ############################################################
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-          audience: 'sts.amazonaws.com'
+          audience: sts.amazonaws.com
+
+      ############################################################
+      # 5) ECS Deploy Steps (unchanged)
+      ############################################################
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -51,8 +87,7 @@ jobs:
         run: docker build --platform linux/amd64 -t ${{ steps.image.outputs.image_uri }} .
 
       - name: Tag image as latest
-        run: |
-          docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_STAGING }}:latest
+        run: docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_STAGING }}:latest
 
       - name: Push images to ECR
         run: |
