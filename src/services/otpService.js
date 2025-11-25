@@ -1,6 +1,6 @@
 const crypto = require('crypto');
-const Parent = require('../models/Parent');
-const Otp = require('../models/Otp');
+const parentRepository = require('../repositories/parentRepository');
+const otpRepository = require('../repositories/otpRepository');
 const logger = require('../utils/logger');
 const notificationService = require('./notificationService');
 
@@ -58,7 +58,7 @@ const sendOtp = async ({ email, phoneNumber, purpose }) => {
   const queryField = contactType === 'email' ? 'email' : 'phoneNumber';
 
   if (purpose === 'signup') {
-    const existingParent = await Parent.findOne({ [queryField]: contactValue });
+    const existingParent = await parentRepository.getParentByEmail(queryField === 'email' ? contactValue : null);
     if (existingParent) {
       const error = new Error(`Parent already exists with this ${contactType}`);
       error.statusCode = 400;
@@ -66,7 +66,9 @@ const sendOtp = async ({ email, phoneNumber, purpose }) => {
       throw error;
     }
   } else {
-    const parent = await Parent.findOne({ [queryField]: contactValue, isActive: true });
+    const parent = queryField === 'email'
+      ? await parentRepository.getParentByEmail(contactValue)
+      : null; // TODO: add phone lookup via secondary index if available
     if (!parent) {
       const error = new Error(`Parent not found with this ${contactType}`);
       error.statusCode = 404;
@@ -75,12 +77,12 @@ const sendOtp = async ({ email, phoneNumber, purpose }) => {
     }
   }
 
-  await Otp.deleteMany({ contact: contactValue, purpose });
+  await otpRepository.deleteByContactAndPurpose(contactValue, purpose);
 
   const otpCode = generateOtp();
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-  const otpDoc = await Otp.create({
+  const otpDoc = await otpRepository.createOtp({
     contact: contactValue,
     contactType,
     purpose,
@@ -123,7 +125,7 @@ const sendOtp = async ({ email, phoneNumber, purpose }) => {
       error: error.message
     });
 
-    await otpDoc.deleteOne();
+    await otpRepository.deleteById(otpDoc.id);
     throw error;
   }
 
@@ -161,7 +163,7 @@ const issueTokensForParent = async (parent) => {
 const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
   const { contactType, contactValue } = normalizeContact(email, phoneNumber);
 
-  const otpDoc = await Otp.findOne({ contact: contactValue, purpose }).sort({ createdAt: -1 });
+  const otpDoc = await otpRepository.getLatestByContactAndPurpose(contactValue, purpose);
 
   if (!otpDoc) {
     const error = new Error('OTP not found or expired');
@@ -178,7 +180,7 @@ const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
   }
 
   if (otpDoc.expiresAt < new Date()) {
-    await otpDoc.deleteOne();
+    await otpRepository.deleteById(otpDoc.id);
     const error = new Error('OTP has expired');
     error.statusCode = 400;
     error.code = 'OTP_EXPIRED';
@@ -186,7 +188,7 @@ const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
   }
 
   if (otpDoc.attempts >= OTP_MAX_ATTEMPTS) {
-    await otpDoc.deleteOne();
+    await otpRepository.deleteById(otpDoc.id);
     const error = new Error('Maximum OTP attempts exceeded');
     error.statusCode = 429;
     error.code = 'OTP_ATTEMPTS_EXCEEDED';
@@ -194,8 +196,8 @@ const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
   }
 
   if (otpDoc.otp !== otp) {
-    otpDoc.attempts += 1;
-    await otpDoc.save();
+    otpDoc.attempts = (otpDoc.attempts || 0) + 1;
+    await otpRepository.createOtp({ ...otpDoc, updatedAt: new Date().toISOString() });
 
     const attemptsLeft = Math.max(OTP_MAX_ATTEMPTS - otpDoc.attempts, 0);
     const error = new Error(`Invalid OTP. ${attemptsLeft} attempts remaining`);
@@ -207,7 +209,7 @@ const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
 
   otpDoc.verified = true;
   otpDoc.verifiedAt = new Date();
-  await otpDoc.save();
+  await otpRepository.createOtp({ ...otpDoc, updatedAt: new Date().toISOString() });
 
   logger.info('OTP verified successfully', {
     contactType,
@@ -217,9 +219,11 @@ const verifyOtp = async ({ email, phoneNumber, purpose, otp }) => {
 
   if (purpose === 'login') {
     const queryField = contactType === 'email' ? 'email' : 'phoneNumber';
-    const parent = await Parent.findOne({ [queryField]: contactValue, isActive: true });
+    const parent = queryField === 'email'
+      ? await parentRepository.getParentByEmail(contactValue)
+      : null; // TODO: add phone lookup via secondary index if available
 
-    if (!parent) {
+    if (!parent || parent.isActive === false) {
       const error = new Error('Parent account not available');
       error.statusCode = 404;
       error.code = 'PARENT_NOT_FOUND';

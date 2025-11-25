@@ -1,5 +1,5 @@
-const Child = require('../models/Child');
-const Question = require('../models/Questions');
+const childRepository = require('../repositories/childRepository');
+const questionRepository = require('../repositories/questionRepository');
 const ASSESSMENT_CONSTANTS = require('../constants/assessmentConstants');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
@@ -15,7 +15,7 @@ const logger = require('../utils/logger');
  */
 const processAssessment = async (responses, childId, parentId, method = 'weighted_average') => {
   try {
-    const child = await Child.findById(childId);
+    const child = await childRepository.getChild(childId);
     if (!child) {
       const error = new Error(`Child with ID ${childId} not found`);
       error.statusCode = 404;
@@ -23,7 +23,7 @@ const processAssessment = async (responses, childId, parentId, method = 'weighte
       throw error;
     }
 
-    if (child.parentId.toString() !== parentId) {
+    if ((child.parentId || '').toString() !== parentId) {
       const error = new Error('Unauthorized: Parent ID does not match child record');
       error.statusCode = 403;
       error.code = 'UNAUTHORIZED_ACCESS';
@@ -31,16 +31,17 @@ const processAssessment = async (responses, childId, parentId, method = 'weighte
     }
 
     const questionIds = responses.map(r => r.questionId);
-    const questions = await Question.find({ _id: { $in: questionIds }, isActive: true });
+    const questions = await questionRepository.getQuestionsByIds(questionIds);
+    const activeQuestions = questions.filter(q => q.isActive !== false);
 
-    if (questions.length === 0) {
+    if (activeQuestions.length === 0) {
       const error = new Error('No valid questions found');
       error.statusCode = 400;
       error.code = 'INVALID_QUESTIONS';
       throw error;
     }
 
-    const questionMap = new Map(questions.map(q => [q._id.toString(), q]));
+    const questionMap = new Map(activeQuestions.map(q => [(q._id || q.id).toString(), q]));
 
     let issueScores;
     if (method === 'weighted_average') {
@@ -60,7 +61,7 @@ const processAssessment = async (responses, childId, parentId, method = 'weighte
       issueScores,
       method,
       parentId,
-      questions.length
+      activeQuestions.length
     );
 
     await attachAssessmentToChild(childId, assessmentResult);
@@ -379,16 +380,12 @@ const calculateConfidence = (totalQuestions) => {
  */
 const attachAssessmentToChild = async (childId, assessmentResult) => {
   try {
-    const updated = await Child.findByIdAndUpdate(
-      childId,
-      { $push: { assessmentResults: assessmentResult } },
-      { new: true }
-    );
+    const child = await childRepository.getChild(childId);
+    if (!child) return null;
 
-    if (!updated) {
-      logger.warn('Failed to attach assessment to child', { childId });
-      return null;
-    }
+    const updated = await childRepository.updateChild(childId, {
+      assessmentResults: [...(child.assessmentResults || []), assessmentResult]
+    });
 
     logger.info('Assessment attached to child', { 
       childId, 
@@ -423,11 +420,7 @@ const processCoursesAndReferrals = async (childId, assessmentResult) => {
     });
 
     if (courseIds.length > 0) {
-      await Child.findByIdAndUpdate(
-        childId,
-        { $addToSet: { courseIds: { $each: courseIds } } }
-      );
-
+      await childRepository.addCoursesToChild(childId, courseIds);
       logger.info('Courses assigned to child', { 
         childId, 
         courseCount: courseIds.length 
@@ -464,7 +457,7 @@ const processCoursesAndReferrals = async (childId, assessmentResult) => {
  */
 const getAssessmentById = async (childId, assessmentId) => {
   try {
-    const child = await Child.findById(childId);
+    const child = await childRepository.getChild(childId);
     if (!child) {
       const error = new Error(`Child with ID ${childId} not found`);
       error.statusCode = 404;
@@ -472,7 +465,7 @@ const getAssessmentById = async (childId, assessmentId) => {
       throw error;
     }
 
-    const assessment = child.assessmentResults.find(
+    const assessment = (child.assessmentResults || []).find(
       ar => ar.assessmentId === assessmentId
     );
 
@@ -502,7 +495,7 @@ const getAssessmentById = async (childId, assessmentId) => {
  */
 const getChildAssessments = async (childId) => {
   try {
-    const child = await Child.findById(childId).select('assessmentResults');
+    const child = await childRepository.getChild(childId);
     if (!child) {
       const error = new Error(`Child with ID ${childId} not found`);
       error.statusCode = 404;

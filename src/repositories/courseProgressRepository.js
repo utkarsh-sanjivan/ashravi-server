@@ -1,423 +1,148 @@
-const CourseProgress = require('../models/CourseProgress');
+const { v4: uuidv4 } = require('uuid');
+const { tables } = require('../config/dynamoConfig');
+const dynamoRepository = require('./dynamoRepository');
 const logger = require('../utils/logger');
-const mongoose = require('mongoose');
 
-/**
- * Validate MongoDB ObjectId
- * 
- * @params {idString}: string - ID to validate
- * @returns Valid ObjectId or null
- */
-const validateObjectId = (idString) => {
-  try {
-    return mongoose.Types.ObjectId.isValid(idString) ? idString : null;
-  } catch (error) {
-    logger.warn('Invalid ObjectId format', { idString, error: error.message });
-    return null;
-  }
-};
+const tableName = tables.courseProgress;
+const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
-/**
- * Format document for response
- * 
- * @params {document}: object - MongoDB document
- * @returns Formatted document with id field
- */
-const formatDocument = (document) => {
-  if (!document) return document;
-  const formatted = document.toObject ? document.toObject() : { ...document };
-  formatted.id = formatted._id.toString();
-  return formatted;
-};
-
-/**
- * Create or get course progress
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @returns Course progress
- */
 const getOrCreateProgress = async (userId, courseId) => {
-  try {
-    const userObjectId = validateObjectId(userId);
-    const courseObjectId = validateObjectId(courseId);
+  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const existing = (items || []).find((i) => i.courseId === courseId);
 
-    if (!userObjectId || !courseObjectId) return null;
+  if (existing) return format(existing);
 
-    let progress = await CourseProgress.findOne({
-      userId: userObjectId,
-      courseId: courseObjectId
-    }).lean();
-
-    if (!progress) {
-      const newProgress = new CourseProgress({
-        userId: userObjectId,
-        courseId: courseObjectId,
-        sections: [],
-        overallProgress: 0,
-        notes: ''
-      });
-
-      const saved = await newProgress.save();
-      logger.info('Created course progress', { userId, courseId });
-      progress = saved.toObject();
-    }
-
-    return formatDocument(progress);
-  } catch (error) {
-    logger.error('Error getting/creating progress', { userId, courseId, error: error.message });
-    throw error;
-  }
+  const payload = {
+    id: uuidv4(),
+    userId,
+    courseId,
+    sections: [],
+    overallProgress: 0,
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastAccessedAt: new Date().toISOString()
+  };
+  const created = await dynamoRepository.createItem(tableName, payload);
+  logger.info('Created course progress', { userId, courseId });
+  return format(created);
 };
 
-/**
- * Get user's progress for a course
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @returns Course progress or null
- */
 const getUserCourseProgress = async (userId, courseId) => {
-  try {
-    const userObjectId = validateObjectId(userId);
-    const courseObjectId = validateObjectId(courseId);
-
-    if (!userObjectId || !courseObjectId) return null;
-
-    const progress = await CourseProgress.findOne({
-      userId: userObjectId,
-      courseId: courseObjectId
-    }).lean();
-
-    return progress ? formatDocument(progress) : null;
-  } catch (error) {
-    logger.error('Error fetching user course progress', { userId, courseId, error: error.message });
-    throw error;
-  }
+  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const progress = (items || []).find((i) => i.courseId === courseId);
+  return format(progress || null);
 };
 
-/**
- * Get all courses progress for a user
- * 
- * @params {userId}: string - User ID
- * @params {limit}: number - Max results
- * @returns Array of progress records
- */
 const getUserProgress = async (userId, limit = 100) => {
-  try {
-    const userObjectId = validateObjectId(userId);
-    if (!userObjectId) return [];
-
-    const progress = await CourseProgress.find({ userId: userObjectId })
-      .populate('courseId', 'title thumbnail category')
-      .sort({ lastAccessedAt: -1 })
-      .limit(limit)
-      .lean();
-
-    return progress.map(formatDocument);
-  } catch (error) {
-    logger.error('Error fetching user progress', { userId, error: error.message });
-    throw error;
-  }
+  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const sorted = (items || []).sort(
+    (a, b) => new Date(b.lastAccessedAt || 0) - new Date(a.lastAccessedAt || 0)
+  );
+  return sorted.slice(0, limit).map(format);
 };
 
-/**
- * Update video progress
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @params {sectionId}: string - Section ID
- * @params {videoId}: string - Video ID
- * @params {watchedDuration}: number - Watched duration
- * @params {totalDuration}: number - Total duration
- * @returns Updated progress
- */
+const updateCourseProgress = async (userId, courseId, data) => {
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const updated = await dynamoRepository.updateById(tableName, progress.id, data);
+  return format(updated);
+};
+
 const updateVideoProgress = async (userId, courseId, sectionId, videoId, watchedDuration, totalDuration) => {
-  try {
-    const progress = await getOrCreateProgress(userId, courseId);
-    if (!progress) return null;
-
-    const sectionIndex = progress.sections.findIndex(
-      s => s.sectionId.toString() === sectionId
-    );
-
-    const isCompleted = watchedDuration >= totalDuration * 0.9;
-
-    if (sectionIndex === -1) {
-      progress.sections.push({
-        sectionId,
-        videos: [{
-          videoId,
-          watchedDuration,
-          totalDuration,
-          isCompleted,
-          completedAt: isCompleted ? new Date() : null,
-          lastWatchedAt: new Date()
-        }],
-        isCompleted: false
-      });
-    } else {
-      const section = progress.sections[sectionIndex];
-      const videoIndex = section.videos.findIndex(
-        v => v.videoId.toString() === videoId
-      );
-
-      if (videoIndex === -1) {
-        section.videos.push({
-          videoId,
-          watchedDuration,
-          totalDuration,
-          isCompleted,
-          completedAt: isCompleted ? new Date() : null,
-          lastWatchedAt: new Date()
-        });
-      } else {
-        section.videos[videoIndex].watchedDuration = Math.max(
-          section.videos[videoIndex].watchedDuration,
-          watchedDuration
-        );
-        section.videos[videoIndex].lastWatchedAt = new Date();
-        
-        if (isCompleted && !section.videos[videoIndex].isCompleted) {
-          section.videos[videoIndex].isCompleted = true;
-          section.videos[videoIndex].completedAt = new Date();
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const sections = progress.sections || [];
+  const updatedSections = sections.map((s) =>
+    s.sectionId === sectionId
+      ? {
+          ...s,
+          videos: (s.videos || []).map((v) =>
+            v.videoId === videoId ? { ...v, watchedDuration, totalDuration } : v
+          )
         }
-      }
-    }
-
-    const updated = await CourseProgress.findOneAndUpdate(
-      { userId, courseId },
-      {
-        $set: {
-          sections: progress.sections,
-          lastAccessedAt: new Date(),
-          startedAt: progress.startedAt || new Date()
-        }
-      },
-      { new: true, upsert: true }
-    ).lean();
-
-    logger.info('Updated video progress', { userId, courseId, videoId });
-    return formatDocument(updated);
-  } catch (error) {
-    logger.error('Error updating video progress', { error: error.message });
-    throw error;
-  }
+      : s
+  );
+  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+    sections: updatedSections,
+    lastAccessedAt: new Date().toISOString()
+  });
+  return format(updated);
 };
 
-/**
- * Update test progress
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @params {sectionId}: string - Section ID
- * @params {testId}: string - Test ID
- * @params {score}: number - Test score
- * @params {passingScore}: number - Passing score
- * @returns Updated progress
- */
-const updateTestProgress = async (userId, courseId, sectionId, testId, score, passingScore = 70) => {
-  try {
-    const progress = await getOrCreateProgress(userId, courseId);
-    if (!progress) return null;
-
-    const sectionIndex = progress.sections.findIndex(
-      s => s.sectionId.toString() === sectionId
-    );
-
-    const isPassed = score >= passingScore;
-
-    if (sectionIndex === -1) {
-      progress.sections.push({
-        sectionId,
-        videos: [],
-        test: {
-          testId,
-          attempts: 1,
-          bestScore: score,
-          isPassed,
-          lastAttemptAt: new Date(),
-          completedAt: isPassed ? new Date() : null
-        },
-        isCompleted: false
-      });
-    } else {
-      const section = progress.sections[sectionIndex];
-      
-      if (!section.test) {
-        section.test = {
-          testId,
-          attempts: 1,
-          bestScore: score,
-          isPassed,
-          lastAttemptAt: new Date(),
-          completedAt: isPassed ? new Date() : null
-        };
-      } else {
-        section.test.attempts++;
-        section.test.bestScore = Math.max(section.test.bestScore, score);
-        section.test.lastAttemptAt = new Date();
-        
-        if (isPassed && !section.test.isPassed) {
-          section.test.isPassed = true;
-          section.test.completedAt = new Date();
+const updateTestProgress = async (userId, courseId, sectionId, testId, score, passingScore) => {
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const sections = progress.sections || [];
+  const updatedSections = sections.map((s) =>
+    s.sectionId === sectionId
+      ? {
+          ...s,
+          tests: (s.tests || []).map((t) =>
+            t.testId === testId ? { ...t, score, passingScore, completedAt: new Date().toISOString() } : t
+          )
         }
-      }
-    }
-
-    const updated = await CourseProgress.findOneAndUpdate(
-      { userId, courseId },
-      {
-        $set: {
-          sections: progress.sections,
-          lastAccessedAt: new Date()
-        }
-      },
-      { new: true, upsert: true }
-    ).lean();
-
-    logger.info('Updated test progress', { userId, courseId, testId, score });
-    return formatDocument(updated);
-  } catch (error) {
-    logger.error('Error updating test progress', { error: error.message });
-    throw error;
-  }
+      : s
+  );
+  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+    sections: updatedSections,
+    lastAccessedAt: new Date().toISOString()
+  });
+  return format(updated);
 };
 
-/**
- * Update course notes for a user
- *
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @params {notes}: string - Notes content
- * @returns Updated progress
- */
+const calculateOverallProgress = async (userId, courseId, totalVideos = 0, totalTests = 0) => {
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const sections = progress.sections || [];
+  const watched = sections.flatMap((s) => s.videos || []).filter((v) => v.watchedDuration && v.totalDuration && v.watchedDuration >= v.totalDuration).length;
+  const testsCompleted = sections.flatMap((s) => s.tests || []).filter((t) => t.score !== undefined).length;
+  const videoProgress = totalVideos > 0 ? (watched / totalVideos) * 100 : 0;
+  const testProgress = totalTests > 0 ? (testsCompleted / totalTests) * 100 : 0;
+  const overallProgress = Math.min(100, Math.round((videoProgress + testProgress) / 2));
+  const isCompleted = overallProgress >= 100;
+  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+    overallProgress,
+    isCompleted,
+    lastAccessedAt: new Date().toISOString()
+  });
+  return format(updated);
+};
+
 const updateCourseNotes = async (userId, courseId, notes) => {
-  try {
-    const userObjectId = validateObjectId(userId);
-    const courseObjectId = validateObjectId(courseId);
-
-    if (!userObjectId || !courseObjectId) return null;
-
-    const updated = await CourseProgress.findOneAndUpdate(
-      { userId: userObjectId, courseId: courseObjectId },
-      {
-        $set: {
-          notes,
-          lastAccessedAt: new Date()
-        },
-        $setOnInsert: {
-          sections: [],
-          overallProgress: 0,
-          enrolledAt: new Date()
-        }
-      },
-      { new: true, upsert: true }
-    ).lean();
-
-    if (updated) {
-      logger.info('Updated course notes', { userId, courseId });
-      return formatDocument(updated);
-    }
-
-    return null;
-  } catch (error) {
-    logger.error('Error updating course notes', { userId, courseId, error: error.message });
-    throw error;
-  }
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+    notes,
+    updatedAt: new Date().toISOString()
+  });
+  return format(updated);
 };
 
-/**
- * Calculate and update overall progress
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @params {totalVideos}: number - Total videos in course
- * @params {totalTests}: number - Total tests in course
- * @returns Updated progress
- */
-const calculateOverallProgress = async (userId, courseId, totalVideos, totalTests) => {
-  try {
-    const progress = await getUserCourseProgress(userId, courseId);
-    if (!progress) return null;
-
-    let completedVideos = 0;
-    let completedTests = 0;
-
-    progress.sections.forEach(section => {
-      if (section.videos) {
-        completedVideos += section.videos.filter(v => v.isCompleted).length;
-      }
-      if (section.test && section.test.isPassed) {
-        completedTests++;
-      }
-    });
-
-    const totalItems = totalVideos + totalTests;
-    const completedItems = completedVideos + completedTests;
-    const overallProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-
-    const isCompleted = overallProgress === 100;
-
-    const updated = await CourseProgress.findOneAndUpdate(
-      { userId, courseId },
-      {
-        $set: {
-          overallProgress,
-          isCompleted,
-          completedAt: isCompleted ? new Date() : null
-        }
-      },
-      { new: true }
-    ).lean();
-
-    logger.info('Calculated overall progress', { userId, courseId, overallProgress });
-    return formatDocument(updated);
-  } catch (error) {
-    logger.error('Error calculating overall progress', { error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Issue certificate
- * 
- * @params {userId}: string - User ID
- * @params {courseId}: string - Course ID
- * @returns Updated progress
- */
 const issueCertificate = async (userId, courseId) => {
-  try {
-    const updated = await CourseProgress.findOneAndUpdate(
-      { userId, courseId, isCompleted: true, certificateIssued: false },
-      {
-        $set: {
-          certificateIssued: true,
-          certificateIssuedAt: new Date()
-        }
-      },
-      { new: true }
-    ).lean();
+  const progress = await getUserCourseProgress(userId, courseId);
+  if (!progress) return null;
+  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+    certificateIssued: true,
+    certificateIssuedAt: new Date().toISOString()
+  });
+  return format(updated);
+};
 
-    if (updated) {
-      logger.info('Certificate issued', { userId, courseId });
-      return formatDocument(updated);
-    }
-
-    return null;
-  } catch (error) {
-    logger.error('Error issuing certificate', { error: error.message });
-    throw error;
-  }
+const deleteProgress = async (id) => {
+  await dynamoRepository.deleteById(tableName, id);
+  return true;
 };
 
 module.exports = {
   getOrCreateProgress,
   getUserCourseProgress,
   getUserProgress,
+  updateCourseProgress,
   updateVideoProgress,
   updateTestProgress,
   calculateOverallProgress,
+  updateCourseNotes,
   issueCertificate,
-  updateCourseNotes
+  deleteProgress
 };

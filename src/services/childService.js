@@ -2,7 +2,7 @@ const childRepository = require('../repositories/childRepository');
 const childEducationRepository = require('../repositories/childEducationRepository');
 const childNutritionRepository = require('../repositories/childNutritionRepository');
 const { calculateBMI } = require('../utils/bmiUtils');
-const Parent = require('../models/Parent');
+const parentRepository = require('../repositories/parentRepository');
 const logger = require('../utils/logger');
 
 /**
@@ -23,7 +23,7 @@ const createChild = async (childData, initializeRelated = false) => {
       throw error;
     }
 
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -142,7 +142,7 @@ const getChildrenByParent = async (parentId, limit = 100, skip = 0, includeRelat
   try {
     if (!parentId) return [];
 
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -279,7 +279,7 @@ const countChildrenByParent = async (parentId) => {
   try {
     if (!parentId) return 0;
 
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
     if (!parent) {
       const error = new Error(`Parent with ID ${parentId} not found`);
       error.statusCode = 404;
@@ -391,10 +391,9 @@ const getChildSummary = async (childId) => {
  */
 const linkChildToParent = async (parentId, childId) => {
   try {
-    await Parent.findByIdAndUpdate(
-      parentId,
-      { $addToSet: { childrenIds: childId } }
-    );
+    const parent = await parentRepository.getParent(parentId);
+    const updated = Array.from(new Set([...(parent?.childrenIds || []), childId]));
+    await parentRepository.updateParent(parentId, { childrenIds: updated });
   } catch (error) {
     logger.error('Failed to link child to parent', { parentId, childId, error: error.message });
     throw error;
@@ -410,10 +409,9 @@ const linkChildToParent = async (parentId, childId) => {
  */
 const unlinkChildFromParent = async (parentId, childId) => {
   try {
-    await Parent.findByIdAndUpdate(
-      parentId,
-      { $pull: { childrenIds: childId } }
-    );
+    const parent = await parentRepository.getParent(parentId);
+    const updated = (parent?.childrenIds || []).filter((id) => id !== childId);
+    await parentRepository.updateParent(parentId, { childrenIds: updated });
   } catch (error) {
     logger.error('Failed to unlink child from parent', { parentId, childId, error: error.message });
     throw error;

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Parent = require('../models/Parent');
+const parentRepository = require('../repositories/parentRepository');
 const logger = require('../utils/logger');
 
 /*
@@ -33,7 +33,7 @@ const auth = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Find parent by ID from token
-    const parent = await Parent.findById(decoded.id).select('-password');
+    const parent = await parentRepository.getParent(decoded.id);
 
     if (!parent) {
       logger.warn('Authentication failed - parent not found', {
@@ -137,7 +137,7 @@ const optionalAuth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const parent = await Parent.findById(decoded.id).select('-password');
+    const parent = await parentRepository.getParent(decoded.id);
 
     if (parent && parent.isActive) {
       req.user = {

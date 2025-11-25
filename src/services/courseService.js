@@ -1,8 +1,7 @@
 const courseRepository = require('../repositories/courseRepository');
 const courseProgressRepository = require('../repositories/courseProgressRepository');
-const Parent = require('../models/Parent');
-const Instructor = require('../models/Instructor');
-const Course = require('../models/Course');
+const parentRepository = require('../repositories/parentRepository');
+const instructorRepository = require('../repositories/instructorRepository');
 const logger = require('../utils/logger');
 
 const MAX_PDFS_PER_SECTION = 3;
@@ -18,7 +17,7 @@ const cloneCourseForResponse = (course) => {
 const createCourse = async (data) => {
   try {
     if (data.instructor) {
-      const instructor = await Instructor.findById(data.instructor);
+      const instructor = await instructorRepository.getInstructorById(data.instructor);
       if (!instructor || !instructor.isActive) {
         const error = new Error(`Instructor with ID ${data.instructor} not found`);
         error.statusCode = 404;
@@ -144,7 +143,7 @@ const updateCourse = async (courseId, data) => {
     await getCourseWithValidation(courseId);
 
     if (data.instructor) {
-      const instructor = await Instructor.findById(data.instructor);
+      const instructor = await instructorRepository.getInstructorById(data.instructor);
       if (!instructor || !instructor.isActive) {
         const error = new Error(`Instructor with ID ${data.instructor} not found`);
         error.statusCode = 404;
@@ -213,7 +212,7 @@ const enrollInCourse = async (userId, courseId) => {
   try {
     await getCourseWithValidation(courseId);
     
-    const user = await Parent.findById(userId);
+    const user = await parentRepository.getParent(userId);
     if (!user) {
       const error = new Error(`User with ID ${userId} not found`);
       error.statusCode = 404;
@@ -458,7 +457,7 @@ const attachWishlistStatus = async (courses, parentId) => {
   }
 
   try {
-    const parent = await Parent.findById(parentId).select('wishlistCourseIds');
+    const parent = await parentRepository.getParent(parentId);
     const wishlistCourseIds = parent?.wishlistCourseIds || [];
     const wishlistSet = new Set(wishlistCourseIds.map(id => id.toString()));
 
@@ -519,27 +518,21 @@ const hasAccessToCourse = async (userId, courseId) => {
  */
 const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
   try {
-    const course = await Course.findById(courseId);
+    const course = await getCourseWithValidation(courseId);
+    const sections = course.sections || [];
+    const sectionIndex = sections.findIndex((s) => (s._id || s.id) === sectionId);
 
-    if (!course) {
-      const error = new Error('Course not found');
-      error.statusCode = 404;
-      error.code = 'COURSE_NOT_FOUND';
-      throw error;
-    }
-    
-    const section = course.sections.id(sectionId);
-
-    if (!section) {
+    if (sectionIndex === -1) {
       const error = new Error('Section not found');
       error.statusCode = 404;
       error.code = 'SECTION_NOT_FOUND';
       throw error;
     }
-    
-    const currentPdfCount = section.pdfs.length;
+
+    const section = sections[sectionIndex];
+    const currentPdfCount = (section.pdfs || []).length;
     const newPdfCount = pdfs.length;
-    
+
     if (currentPdfCount + newPdfCount > MAX_PDFS_PER_SECTION) {
       const error = new Error(
         `Section already has ${currentPdfCount} PDF(s). Cannot add ${newPdfCount} more. Maximum ${MAX_PDFS_PER_SECTION} PDFs per section.`
@@ -548,38 +541,32 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
       error.code = 'PDF_LIMIT_EXCEEDED';
       throw error;
     }
-    
-    const pdfMetadata = pdfs.map(pdf => ({
+
+    const pdfMetadata = pdfs.map((pdf) => ({
       filename: pdf.filename,
       url: pdf.url,
       size: pdf.size,
       uploadedBy,
-      uploadedAt: new Date()
+      uploadedAt: new Date().toISOString(),
+      id: pdf.id || pdf._id || undefined
     }));
-    
-    const result = await Course.findOneAndUpdate(
-      { _id: courseId, 'sections._id': sectionId },
-      { $push: { 'sections.$.pdfs': { $each: pdfMetadata } } },
-      { new: true, runValidators: true }
-    );
-    
-    if (!result) {
-      const error = new Error('Failed to add PDFs to section');
-      error.statusCode = 500;
-      error.code = 'PDF_ADD_FAILED';
-      throw error;
-    }
-    
-    const updatedSection = result.sections.id(sectionId);
 
+    const updatedSection = {
+      ...section,
+      pdfs: [...(section.pdfs || []), ...pdfMetadata]
+    };
+    const updatedSections = [...sections];
+    updatedSections[sectionIndex] = updatedSection;
+
+    const updatedCourse = await courseRepository.updateCourse(courseId, { sections: updatedSections });
     logger.info('PDFs added to section', {
       courseId,
       sectionId,
       pdfCount: newPdfCount,
       uploadedBy
     });
-    
-    return updatedSection;
+
+    return updatedCourse.sections.find((s) => (s._id || s.id) === sectionId) || updatedSection;
   } catch (error) {
     logger.error('Add PDFs to section failed', {
       courseId,
@@ -600,57 +587,42 @@ const addPdfsToSection = async (courseId, sectionId, pdfs, uploadedBy) => {
  */
 const removePdfFromSection = async (courseId, sectionId, pdfId) => {
   try {
-    const course = await Course.findById(courseId);
+    const course = await getCourseWithValidation(courseId);
+    const sections = course.sections || [];
+    const sectionIndex = sections.findIndex((s) => (s._id || s.id) === sectionId);
 
-    if (!course) {
-      const error = new Error('Course not found');
-      error.statusCode = 404;
-      error.code = 'COURSE_NOT_FOUND';
-      throw error;
-    }
-    
-    const section = course.sections.id(sectionId);
-
-    if (!section) {
+    if (sectionIndex === -1) {
       const error = new Error('Section not found');
       error.statusCode = 404;
       error.code = 'SECTION_NOT_FOUND';
       throw error;
     }
-    
-    const pdfExists = section.pdfs.some(pdf =>
-      pdf._id && pdf._id.toString() === pdfId
+
+    const section = sections[sectionIndex];
+    const filteredPdfs = (section.pdfs || []).filter(
+      (pdf) => (pdf._id || pdf.id || '').toString() !== pdfId
     );
-    
-    if (!pdfExists) {
+
+    if (filteredPdfs.length === (section.pdfs || []).length) {
       const error = new Error('PDF not found in section');
       error.statusCode = 404;
       error.code = 'PDF_NOT_FOUND';
       throw error;
     }
-    
-    const result = await Course.findOneAndUpdate(
-      { _id: courseId, 'sections._id': sectionId },
-      { $pull: { 'sections.$.pdfs': { _id: pdfId } } },
-      { new: true }
-    );
-    
-    if (!result) {
-      const error = new Error('Failed to remove PDF from section');
-      error.statusCode = 500;
-      error.code = 'PDF_REMOVE_FAILED';
-      throw error;
-    }
-    
-    const updatedSection = result.sections.id(sectionId);
+
+    const updatedSection = { ...section, pdfs: filteredPdfs };
+    const updatedSections = [...sections];
+    updatedSections[sectionIndex] = updatedSection;
+
+    const updatedCourse = await courseRepository.updateCourse(courseId, { sections: updatedSections });
 
     logger.info('PDF removed from section', {
       courseId,
       sectionId,
       pdfId
     });
-    
-    return updatedSection;
+
+    return updatedCourse.sections.find((s) => (s._id || s.id) === sectionId) || updatedSection;
   } catch (error) {
     logger.error('Remove PDF from section failed', {
       courseId,

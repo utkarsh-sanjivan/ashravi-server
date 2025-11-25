@@ -3,7 +3,7 @@
    - Confirm the front-end deployment role (e.g., `AsharviDeployRole`) has only the permissions it needs (CloudFront, S3, Lambda, API Gateway). Ensure no overly broad policies remain from initial provisioning.
    - Ensure MFA is enforced for human users. Update password policies if missing.
 2. **Create/confirm backend-specific IAM roles**
-   - **`AsharviBackendEcsTaskRole`** – Allows `secretsmanager:GetSecretValue`, `logs:CreateLogStream`, `logs:PutLogEvents`, and specific DynamoDB/MongoDB access if needed.
+   - **`AsharviBackendEcsTaskRole`** – Allows `secretsmanager:GetSecretValue`, `logs:CreateLogStream`, `logs:PutLogEvents`, and specific DynamoDB access.
    - **`AsharviBackendEcsExecutionRole`** – Allows `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, `logs:CreateLogStream`, and `logs:PutLogEvents`.
    - **`AsharviCicdDeployRole`** (if reusing CI/CD) – Update trust relationship so GitHub Actions (or CodePipeline) can assume it. Attach least-privilege policy for ECR, ECS, CloudWatch, Secrets Manager.
 3. **Rotate credentials** – Rotate access keys for CI/CD IAM users/roles if older than 90 days. Document new keys in your CI/CD secrets storage.
@@ -16,14 +16,14 @@
    - Attach an Internet Gateway and create NAT Gateway(s) only if outbound internet is required from private subnets.
 2. **Security Groups**
    - `alb-backend-sg`: inbound `443` from internet; outbound `3000` to ECS tasks.
-   - `ecs-backend-sg`: inbound `3000` from ALB SG; outbound `443` to Secrets Manager/ECR and `27017` or DynamoDB endpoints depending on the database choice.
+   - `ecs-backend-sg`: inbound `3000` from ALB SG; outbound `443` to Secrets Manager/ECR and DynamoDB endpoints.
 3. **VPC Endpoints** (optional but recommended): create interface endpoints for `com.amazonaws.ap-south-1.secretsmanager`, `ecr.api`, `ecr.dkr`, and `logs`. This allows ECS tasks to reach AWS services without traversing NAT.
 
 ---
 
 ## 3. Configure Secrets and Environment Values
 1. **AWS Secrets Manager**
-   - Create secret `asharvi/backend/prod` with JSON keys like `MONGO_URI` (or DynamoDB table name), `JWT_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`.
+   - Create secret `asharvi/backend/prod` with JSON keys like `AWS_REGION`, `PARENTS_TABLE_NAME`, `CHILDREN_TABLE_NAME`, `COURSES_TABLE_NAME`, `COURSE_PROGRESS_TABLE_NAME`, `INSTRUCTORS_TABLE_NAME`, `QUESTIONS_TABLE_NAME`, `OTPS_TABLE_NAME`, `CHILD_EDUCATION_TABLE_NAME`, `CHILD_NUTRITION_TABLE_NAME`, `JWT_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`.
    - For staging, duplicate as `asharvi/backend/staging` with appropriate values.
 2. **Parameter Store (optional)**
    - Store non-sensitive settings (log level, feature flags) as parameters.
@@ -71,14 +71,16 @@
 
 ---
 
-## 7. Database Integration
-1. **MongoDB Atlas**
-   - Ensure Atlas cluster is located in ap-south-1. Configure VPC peering or PrivateLink to the AWS VPC and update route tables.
-   - Whitelist the ECS security group CIDR or specific private subnets.
-   - Confirm backup schedule and monitoring alerts are active.
-2. **If Migrating to DynamoDB**
-   - Create tables with partition keys aligned to application data model.
-   - Update secrets/parameters (`DYNAMO_TABLE_*` values) and modify application code accordingly before deployment.
+## 7. Database Integration (DynamoDB)
+1. **Provision DynamoDB tables**
+   - Tables: parents, children, courses, course_progress, instructors, questions, otps, child_education, child_nutrition.
+   - Partition key: `id` (string). Add GSIs as needed for access patterns (email, slug, childId, userId/courseId, etc.).
+2. **Throughput/Autoscaling**
+   - Enable auto-scaling (RCU/WCU) per table or use on-demand.
+3. **VPC Endpoints**
+   - Create DynamoDB gateway endpoint for private subnets.
+4. **Backups/Monitoring**
+   - Enable point-in-time recovery. Set CloudWatch alarms on throttling/consumed capacity.
 
 ---
 
@@ -110,6 +112,5 @@
 - Rotate Secrets Manager values and ECS task role credentials regularly.
 - Patch Docker base images monthly; update Dockerfile to latest Node.js LTS when available.
 - Review auto-scaling policies quarterly based on load trends.
-- Test disaster recovery by simulating MongoDB outages and verifying application behavior.
+- Test disaster recovery by simulating DynamoDB throttling/failures and verifying application behavior.
 - Document runbooks for incident response, scaling changes, and deployment rollback procedures.
-
