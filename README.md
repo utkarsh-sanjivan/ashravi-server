@@ -86,7 +86,7 @@ This project follows a **layered architecture pattern** with clear separation of
 ### Prerequisites
 
 - Node.js >= 16.0.0
-- MongoDB >= 4.4
+- AWS account with DynamoDB permissions (tables provided via env)
 - Redis >= 6.0 (optional)
 - Docker & Docker Compose (optional)
 
@@ -100,10 +100,7 @@ npm install
 ```
 
 2. **Configure environment variables:**
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
+   - Set `AWS_REGION`, table names (`PARENTS_TABLE_NAME`, `CHILDREN_TABLE_NAME`, `COURSES_TABLE_NAME`, `COURSE_PROGRESS_TABLE_NAME`, `INSTRUCTORS_TABLE_NAME`, `QUESTIONS_TABLE_NAME`, `OTPS_TABLE_NAME`, `CHILD_EDUCATION_TABLE_NAME`, `CHILD_NUTRITION_TABLE_NAME`), `JWT_SECRET`, mail/SMS creds, CORS settings, etc.
 
 3. **Start development server:**
 ```bash
@@ -121,8 +118,7 @@ docker-compose up -d
 
 This will start:
 - Node.js application (port 3000)
-- MongoDB (port 27017)  
-- Redis (port 6379)
+- DynamoDB connectivity via configured AWS credentials/role (no local MongoDB)
 - Nginx reverse proxy (port 80)
 
 ## 📖 API Documentation
@@ -220,7 +216,16 @@ Visit http://localhost:3000/api/v1/docs for interactive API documentation (Swagg
 | `NODE_ENV` | Environment mode | `development` |
 | `PORT` | Server port | `3000` |
 | `HOST` | Server host | `localhost` |
-| `DB_URI` | MongoDB connection URI | `mongodb://localhost:27017/nodejs-server-layered` |
+| `AWS_REGION` | AWS region for DynamoDB | `us-east-1` |
+| `PARENTS_TABLE_NAME` | DynamoDB table for parents | `parents` |
+| `CHILDREN_TABLE_NAME` | DynamoDB table for children | `children` |
+| `COURSES_TABLE_NAME` | DynamoDB table for courses | `courses` |
+| `COURSE_PROGRESS_TABLE_NAME` | DynamoDB table for course progress | `course_progress` |
+| `INSTRUCTORS_TABLE_NAME` | DynamoDB table for instructors | `instructors` |
+| `QUESTIONS_TABLE_NAME` | DynamoDB table for questions | `questions` |
+| `OTPS_TABLE_NAME` | DynamoDB table for OTPs | `otps` |
+| `CHILD_EDUCATION_TABLE_NAME` | DynamoDB table for child education | `child_education` |
+| `CHILD_NUTRITION_TABLE_NAME` | DynamoDB table for child nutrition | `child_nutrition` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `JWT_SECRET` | JWT signing secret | Required |
 | `JWT_EXPIRES_IN` | JWT expiration time | `7d` |
@@ -322,7 +327,16 @@ docker run -d \
   --name nodejs-server \
   -p 3000:3000 \
   -e NODE_ENV=production \
-  -e DB_URI=mongodb://your-mongodb-host:27017/nodejs-server-layered \
+  -e AWS_REGION=us-east-1 \
+  -e PARENTS_TABLE_NAME=parents \
+  -e CHILDREN_TABLE_NAME=children \
+  -e COURSES_TABLE_NAME=courses \
+  -e COURSE_PROGRESS_TABLE_NAME=course_progress \
+  -e INSTRUCTORS_TABLE_NAME=instructors \
+  -e QUESTIONS_TABLE_NAME=questions \
+  -e OTPS_TABLE_NAME=otps \
+  -e CHILD_EDUCATION_TABLE_NAME=child_education \
+  -e CHILD_NUTRITION_TABLE_NAME=child_nutrition \
   -e REDIS_URL=redis://your-redis-host:6379 \
   nodejs-server-layered
 ```

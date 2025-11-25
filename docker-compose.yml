@@ -7,11 +7,18 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_URI=mongodb://mongodb:27017/nodejs-server-layered
+      - AWS_REGION=us-east-1
+      - PARENTS_TABLE_NAME=parents
+      - CHILDREN_TABLE_NAME=children
+      - COURSES_TABLE_NAME=courses
+      - COURSE_PROGRESS_TABLE_NAME=course_progress
+      - INSTRUCTORS_TABLE_NAME=instructors
+      - QUESTIONS_TABLE_NAME=questions
+      - OTPS_TABLE_NAME=otps
+      - CHILD_EDUCATION_TABLE_NAME=child_education
+      - CHILD_NUTRITION_TABLE_NAME=child_nutrition
       - JWT_SECRET=your-production-jwt-secret-change-this
       - SESSION_SECRET=your-production-session-secret-change-this
-    depends_on:
-      - mongodb
     volumes:
       - ./logs:/usr/src/app/logs
     restart: unless-stopped
@@ -23,25 +30,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  mongodb:
-    image: mongo:6
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=password
-    volumes:
-      - mongodb_data:/data/db
-      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-    restart: unless-stopped
-    networks:
-      - app-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   nginx:
     image: nginx:alpine
@@ -61,10 +49,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-volumes:
-  mongodb_data:
-    driver: local
 
 networks:
   app-network:

@@ -1,350 +1,125 @@
-const Parent = require('../models/Parent');
-const Child = require('../models/Child');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { tables } = require('../config/dynamoConfig');
+const dynamoRepository = require('./dynamoRepository');
 const logger = require('../utils/logger');
-const mongoose = require('mongoose');
 
-const IMMUTABLE_FIELDS = new Set(['_id', 'id', 'createdAt']);
+const tableName = tables.parents;
+const IMMUTABLE_FIELDS = new Set(['id', 'createdAt']);
 
-/**
- * Validate MongoDB ObjectId
- * 
- * @params {idString}: string - ID to validate
- * @returns Valid ObjectId or null
- */
-const validateObjectId = (idString) => {
-  try {
-    return mongoose.Types.ObjectId.isValid(idString) ? idString : null;
-  } catch (error) {
-    logger.warn('Invalid ObjectId format', { idString, error: error.message });
-    return null;
-  }
+const attachHelpers = (item) => {
+  if (!item) return null;
+  return {
+    ...item,
+    _id: item.id,
+    comparePassword: async (candidate) => bcrypt.compare(candidate, item.password || ''),
+    getSignedJwtToken: () =>
+      jwt.sign({ id: item.id, email: item.email, role: 'parent' }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+      }),
+    generateRefreshToken: () =>
+      jwt.sign({ id: item.id, type: 'refresh' }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
+        expiresIn: '30d'
+      }),
+    getPublicProfile: () => ({
+      id: item.id,
+      name: item.name,
+      email: item.email,
+      phoneNumber: item.phoneNumber,
+      city: item.city,
+      economicStatus: item.economicStatus,
+      occupation: item.occupation,
+      childrenIds: item.childrenIds || [],
+      childrenCount: (item.childrenIds || []).length,
+      wishlistCourseIds: item.wishlistCourseIds || [],
+      wishlistCount: (item.wishlistCourseIds || []).length,
+      createdAt: item.createdAt,
+      lastLogin: item.lastLogin
+    }),
+    save: async () => {
+      const toPersist = { ...item };
+      const persisted = await dynamoRepository.updateById(tableName, item.id, toPersist);
+      return attachHelpers(persisted);
+    },
+    markModified: () => {}
+  };
 };
 
-/**
- * Format document for response
- * 
- * @params {document}: object - MongoDB document
- * @returns Formatted document with id field
- */
-const formatDocument = (document) => {
-  if (!document) return document;
-  const formatted = document.toObject ? document.toObject() : { ...document };
-  formatted.id = formatted._id.toString();
-  return formatted;
-};
-
-/**
- * Create a new parent record
- * 
- * @params {parentData}: object - Parent data
- * @returns Created parent document
- */
 const createParent = async (parentData) => {
-  try {
-    const existing = await Parent.findOne({ 
-      emailAddress: parentData.emailAddress.toLowerCase().trim() 
-    });
-    
-    if (existing) {
-      const error = new Error('Parent with this email address already exists');
-      error.code = 'DUPLICATE_EMAIL';
-      throw error;
-    }
-
-    const parent = new Parent(parentData);
-    const saved = await parent.save();
-    logger.info('Parent created successfully', { parentId: saved._id });
-    return formatDocument(saved);
-  } catch (error) {
-    if (error.code === 11000) {
-      logger.error('Duplicate email address', { email: parentData.emailAddress });
-      const dupError = new Error('Parent with this email address already exists');
-      dupError.code = 'DUPLICATE_EMAIL';
-      throw dupError;
-    }
-    logger.error('Error creating parent', { error: error.message, parentData });
+  const email = parentData.email?.toLowerCase().trim();
+  const existing = await getParentByEmail(email);
+  if (existing) {
+    const error = new Error('Parent with this email address already exists');
+    error.code = 'DUPLICATE_EMAIL';
     throw error;
   }
+
+  const passwordHash = await bcrypt.hash(parentData.password, 12);
+
+  const payload = {
+    ...parentData,
+    email,
+    password: passwordHash,
+    childrenIds: parentData.childrenIds || [],
+    wishlistCourseIds: parentData.wishlistCourseIds || [],
+    isActive: parentData.isActive !== undefined ? parentData.isActive : true,
+    refreshTokens: parentData.refreshTokens || []
+  };
+
+  const created = await dynamoRepository.createItem(tableName, payload);
+  logger.info('Parent created successfully', { parentId: created.id });
+  return attachHelpers(created);
 };
 
-/**
- * Get parent by ID
- * 
- * @params {parentId}: string - Parent ID
- * @returns Parent document or null
- */
 const getParent = async (parentId) => {
-  try {
-    const objectId = validateObjectId(parentId);
-    if (!objectId) return null;
-
-    const parent = await Parent.findById(objectId).lean();
-    return parent ? formatDocument(parent) : null;
-  } catch (error) {
-    logger.error('Error fetching parent', { parentId, error: error.message });
-    throw error;
-  }
+  const item = await dynamoRepository.getById(tableName, parentId);
+  return attachHelpers(item);
 };
 
-/**
- * Get parent by email address
- * 
- * @params {email}: string - Email address
- * @returns Parent document or null
- */
 const getParentByEmail = async (email) => {
-  try {
-    if (!email) return null;
-
-    const parent = await Parent.findOne({ 
-      emailAddress: email.toLowerCase().trim() 
-    }).lean();
-    
-    return parent ? formatDocument(parent) : null;
-  } catch (error) {
-    logger.error('Error fetching parent by email', { email, error: error.message });
-    throw error;
-  }
+  if (!email) return null;
+  const normalized = email.toLowerCase().trim();
+  const { items } = await dynamoRepository.scanByField(tableName, 'email', normalized);
+  return attachHelpers(items[0] || null);
 };
 
-/**
- * Get parents by city with pagination
- * 
- * @params {city}: string - City name
- * @params {limit}: number - Max results
- * @params {skip}: number - Skip count
- * @returns Array of parents
- */
 const getParentsByCity = async (city, limit = 100, skip = 0) => {
-  try {
-    if (!city) return [];
-
-    const parents = await Parent.find({ 
-      city: new RegExp(`^${city}$`, 'i') 
-    })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    return parents.map(formatDocument);
-  } catch (error) {
-    logger.error('Error fetching parents by city', { city, error: error.message });
-    throw error;
-  }
+  if (!city) return [];
+  const normalized = city.toLowerCase();
+  const items = await dynamoRepository.scanAll(tableName);
+  const filtered = items.filter((p) => (p.city || '').toLowerCase() === normalized);
+  const sliced = filtered.slice(skip, skip + limit);
+  return sliced.map(attachHelpers);
 };
 
-/**
- * Update parent by ID
- * 
- * @params {parentId}: string - Parent ID
- * @params {updateData}: object - Update data
- * @returns Updated parent document
- */
 const updateParent = async (parentId, updateData) => {
-  try {
-    const objectId = validateObjectId(parentId);
-    if (!objectId) return null;
-
-    if (!updateData || Object.keys(updateData).length === 0) {
-      return await getParent(parentId);
-    }
-
-    const sanitizedData = {};
-    for (const [key, value] of Object.entries(updateData)) {
-      if (!IMMUTABLE_FIELDS.has(key) && key !== 'childrenIds') {
-        sanitizedData[key] = value;
-      }
-    }
-
-    if (Object.keys(sanitizedData).length === 0) {
-      return await getParent(parentId);
-    }
-
-    if (sanitizedData.emailAddress) {
-      const existing = await Parent.findOne({
-        emailAddress: sanitizedData.emailAddress.toLowerCase().trim(),
-        _id: { $ne: objectId }
-      });
-      
-      if (existing) {
-        const error = new Error('Parent with this email address already exists');
-        error.code = 'DUPLICATE_EMAIL';
-        throw error;
-      }
-    }
-
-    const updated = await Parent.findByIdAndUpdate(
-      objectId,
-      { $set: sanitizedData },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updated) {
-      logger.warn('Parent not found for update', { parentId });
-      return null;
-    }
-
-    logger.info('Parent updated successfully', { parentId });
-    return formatDocument(updated);
-  } catch (error) {
-    logger.error('Error updating parent', { parentId, error: error.message });
-    throw error;
+  if (!updateData || Object.keys(updateData).length === 0) {
+    return getParent(parentId);
   }
+
+  const sanitized = {};
+  Object.entries(updateData).forEach(([key, value]) => {
+    if (!IMMUTABLE_FIELDS.has(key) && value !== undefined) {
+      sanitized[key] = value;
+    }
+  });
+
+  if (sanitized.password) {
+    sanitized.password = await bcrypt.hash(sanitized.password, 12);
+  }
+
+  const updated = await dynamoRepository.updateById(tableName, parentId, sanitized);
+  return attachHelpers(updated);
 };
 
-/**
- * Delete parent by ID
- * 
- * @params {parentId}: string - Parent ID
- * @returns Boolean indicating success
- */
 const deleteParent = async (parentId) => {
-  try {
-    const objectId = validateObjectId(parentId);
-    if (!objectId) return false;
-
-    const result = await Parent.findByIdAndDelete(objectId);
-    
-    if (result) {
-      logger.info('Parent deleted successfully', { parentId });
-      return true;
-    }
-    
-    logger.warn('Parent not found for deletion', { parentId });
-    return false;
-  } catch (error) {
-    logger.error('Error deleting parent', { parentId, error: error.message });
-    throw error;
-  }
+  await dynamoRepository.deleteById(tableName, parentId);
+  return true;
 };
 
-/**
- * Count total parents
- * 
- * @returns Count of parents
- */
 const countParents = async () => {
-  try {
-    return await Parent.countDocuments({});
-  } catch (error) {
-    logger.error('Error counting parents', { error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Add child ID to parent
- * 
- * @params {parentId}: string - Parent ID
- * @params {childId}: string - Child ID
- * @returns Updated parent document
- */
-const addChildToParent = async (parentId, childId) => {
-  try {
-    const objectId = validateObjectId(parentId);
-    if (!objectId) return null;
-
-    const updated = await Parent.findByIdAndUpdate(
-      objectId,
-      { $addToSet: { childrenIds: childId } },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (updated) {
-      logger.info('Child added to parent', { parentId, childId });
-      return formatDocument(updated);
-    }
-
-    return null;
-  } catch (error) {
-    logger.error('Error adding child to parent', { parentId, childId, error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Remove child ID from parent
- * 
- * @params {parentId}: string - Parent ID
- * @params {childId}: string - Child ID
- * @returns Updated parent document
- */
-const removeChildFromParent = async (parentId, childId) => {
-  try {
-    const objectId = validateObjectId(parentId);
-    if (!objectId) return null;
-
-    const updated = await Parent.findByIdAndUpdate(
-      objectId,
-      { $pull: { childrenIds: childId } },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (updated) {
-      logger.info('Child removed from parent', { parentId, childId });
-      return formatDocument(updated);
-    }
-
-    return null;
-  } catch (error) {
-    logger.error('Error removing child from parent', { parentId, childId, error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Get all children for a parent
- * 
- * @params {parentId}: string - Parent ID
- * @returns Array of children
- */
-const getChildrenForParent = async (parentId) => {
-  try {
-    const parent = await getParent(parentId);
-    if (!parent || !parent.childrenIds || parent.childrenIds.length === 0) {
-      return [];
-    }
-
-    const children = await Child.find({ 
-      _id: { $in: parent.childrenIds } 
-    }).lean();
-
-    return children.map(formatDocument);
-  } catch (error) {
-    logger.error('Error fetching children for parent', { parentId, error: error.message });
-    throw error;
-  }
-};
-
-/**
- * Get all children across all parents
- * 
- * @returns Array of all children
- */
-const getAllChildren = async () => {
-  try {
-    const parents = await Parent.find({}, { childrenIds: 1 }).lean();
-    
-    const childIdSet = new Set();
-    parents.forEach(parent => {
-      if (parent.childrenIds) {
-        parent.childrenIds.forEach(id => childIdSet.add(id.toString()));
-      }
-    });
-
-    if (childIdSet.size === 0) {
-      return [];
-    }
-
-    const childIds = Array.from(childIdSet);
-    const children = await Child.find({ _id: { $in: childIds } }).lean();
-
-    return children.map(formatDocument);
-  } catch (error) {
-    logger.error('Error fetching all children', { error: error.message });
-    throw error;
-  }
+  const items = await dynamoRepository.scanAll(tableName);
+  return items.length;
 };
 
 module.exports = {
@@ -354,9 +129,5 @@ module.exports = {
   getParentsByCity,
   updateParent,
   deleteParent,
-  countParents,
-  addChildToParent,
-  removeChildFromParent,
-  getChildrenForParent,
-  getAllChildren
+  countParents
 };

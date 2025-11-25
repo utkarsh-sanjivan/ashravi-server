@@ -1,6 +1,6 @@
-const Parent = require('../models/Parent');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const parentRepository = require('../repositories/parentRepository');
 
 /*
  * Register a new parent
@@ -12,8 +12,7 @@ const register = async (parentData) => {
   const { name, email, password, phoneNumber, city, economicStatus, occupation } = parentData;
 
   try {
-    const existingParent = await Parent.findOne({ email });
-    
+    const existingParent = await parentRepository.getParentByEmail(email);
     if (existingParent) {
       const error = new Error('Parent already exists with this email address');
       error.statusCode = 400;
@@ -21,7 +20,7 @@ const register = async (parentData) => {
       throw error;
     }
 
-    const parent = await Parent.create({
+    const parent = await parentRepository.createParent({
       name,
       email,
       password,
@@ -36,6 +35,7 @@ const register = async (parentData) => {
     const refreshToken = parent.generateRefreshToken();
 
     // Store refresh token in database
+    parent.refreshTokens = parent.refreshTokens || [];
     parent.refreshTokens.push({
       token: refreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
@@ -73,7 +73,7 @@ const login = async (credentials) => {
   const { email, password } = credentials;
 
   try {
-    const parent = await Parent.findOne({ email, isActive: true }).select('+password');
+    const parent = await parentRepository.getParentByEmail(email);
 
     if (!parent) {
       logger.warn('Login attempt with non-existent email', { email });
@@ -101,12 +101,12 @@ const login = async (credentials) => {
     const refreshToken = parent.generateRefreshToken();
 
     // Store refresh token in database
+    parent.refreshTokens = parent.refreshTokens || [];
     parent.refreshTokens.push({
       token: refreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
-    // Keep only last 5 refresh tokens
     if (parent.refreshTokens.length > 5) {
       parent.refreshTokens = parent.refreshTokens.slice(-5);
     }
@@ -141,10 +141,7 @@ const login = async (credentials) => {
  */
 const getProfile = async (parentId) => {
   try {
-    const parent = await Parent.findById(parentId).populate({
-      path: 'children',
-      select: 'name age gender grade'
-    });
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not found');
@@ -191,11 +188,7 @@ const updateProfile = async (parentId, updateData) => {
   }
 
   try {
-    const parent = await Parent.findByIdAndUpdate(
-      parentId,
-      updates,
-      { new: true, runValidators: true }
-    );
+    const parent = await parentRepository.updateParent(parentId, updates);
 
     if (!parent) {
       const error = new Error('Parent not found');
@@ -231,7 +224,7 @@ const updateProfile = async (parentId, updateData) => {
  */
 const changePassword = async (parentId, currentPassword, newPassword) => {
   try {
-    const parent = await Parent.findById(parentId).select('+password');
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent) {
       const error = new Error('Parent not found');
@@ -285,7 +278,7 @@ const refresh = async (refreshToken) => {
       process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET
     );
 
-    const parent = await Parent.findById(decoded.id);
+    const parent = await parentRepository.getParent(decoded.id);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not found or inactive');
@@ -314,6 +307,7 @@ const refresh = async (refreshToken) => {
     const newRefreshToken = parent.generateRefreshToken();
 
     // Store new refresh token
+    parent.refreshTokens = parent.refreshTokens || [];
     parent.refreshTokens.push({
       token: newRefreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -351,7 +345,7 @@ const verify = async (token) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const parent = await Parent.findById(decoded.id).select('-password');
+    const parent = await parentRepository.getParent(decoded.id);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not authorized');
@@ -392,7 +386,7 @@ const verify = async (token) => {
  */
 const logout = async (parentId, refreshToken) => {
   try {
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent) {
       const error = new Error('Parent not found');
@@ -402,7 +396,7 @@ const logout = async (parentId, refreshToken) => {
     }
 
     if (refreshToken) {
-      parent.refreshTokens = parent.refreshTokens.filter(t => t.token !== refreshToken);
+    parent.refreshTokens = (parent.refreshTokens || []).filter(t => t.token !== refreshToken);
       await parent.save();
     }
 

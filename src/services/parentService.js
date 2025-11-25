@@ -1,6 +1,6 @@
-const Parent = require('../models/Parent');
-const Child = require('../models/Child');
-const Course = require('../models/Course');
+const parentRepository = require('../repositories/parentRepository');
+const childRepository = require('../repositories/childRepository');
+const courseRepository = require('../repositories/courseRepository');
 const logger = require('../utils/logger');
 
 const loadWishlistCourses = async (wishlistCourseIds = []) => {
@@ -8,25 +8,19 @@ const loadWishlistCourses = async (wishlistCourseIds = []) => {
     return [];
   }
 
-  const ids = wishlistCourseIds.map(id => id.toString());
-
-  const courses = await Course.find({
-    _id: { $in: ids },
-    isPublished: true
-  })
-    .select('title slug thumbnail coverImage category subCategory level price rating metadata publishedAt')
-    .lean();
+  const ids = wishlistCourseIds.map((id) => id.toString());
+  const courses = await courseRepository.getCoursesByIds(ids, true);
 
   const courseMap = new Map();
-  courses.forEach(course => {
-    courseMap.set(course._id.toString(), course);
+  (courses || []).forEach((course) => {
+    courseMap.set(course.id, course);
   });
 
   return ids
-    .map(id => courseMap.get(id))
+    .map((id) => courseMap.get(id))
     .filter(Boolean)
-    .map(course => ({
-      id: course._id.toString(),
+    .map((course) => ({
+      id: course.id,
       title: course.title,
       slug: course.slug,
       thumbnail: course.thumbnail,
@@ -41,28 +35,31 @@ const loadWishlistCourses = async (wishlistCourseIds = []) => {
     }));
 };
 
-/*
- * Get parent by ID
- * 
- * @params {parentId}: string - Parent ID
- * @returns Parent document
- */
 const getParentById = async (parentId) => {
   try {
-    const parent = await Parent.findById(parentId)
-      .populate({
-        path: 'children',
-        select: 'name age gender grade'
-      });
+    const parent = await parentRepository.getParent(parentId);
 
-    if (!parent || !parent.isActive) {
+    if (!parent || parent.isActive === false) {
       const error = new Error('Parent not found');
       error.statusCode = 404;
       error.code = 'PARENT_NOT_FOUND';
       throw error;
     }
 
-    return parent;
+    const children = await Promise.all(
+      (parent.childrenIds || []).map((id) => childRepository.getChild(id))
+    );
+
+    return {
+      ...parent,
+      children: children.filter(Boolean).map((c) => ({
+        id: c.id,
+        name: c.name,
+        age: c.age,
+        gender: c.gender,
+        grade: c.grade
+      }))
+    };
   } catch (error) {
     logger.error('Get parent by ID failed', {
       parentId,
@@ -72,20 +69,9 @@ const getParentById = async (parentId) => {
   }
 };
 
-/*
- * Get parent by email
- * 
- * @params {email}: string - Parent email
- * @returns Parent document or null
- */
 const getParentByEmail = async (email) => {
   try {
-    const parent = await Parent.findOne({ 
-      email: email.toLowerCase().trim(),
-      isActive: true 
-    });
-
-    return parent;
+    return await parentRepository.getParentByEmail(email);
   } catch (error) {
     logger.error('Get parent by email failed', {
       email,
@@ -95,26 +81,12 @@ const getParentByEmail = async (email) => {
   }
 };
 
-/*
- * Get parents by city with pagination
- * 
- * @params {city}: string - City name
- * @params {limit}: number - Results limit
- * @params {skip}: number - Results to skip
- * @returns Array of parents
- */
 const getParentsByCity = async (city, limit = 100, skip = 0) => {
   try {
-    const parents = await Parent.find({ 
-      city: new RegExp(`^${city}$`, 'i'),
-      isActive: true 
-    })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .select('-password -refreshTokens');
-
-    return parents.map(parent => parent.getPublicProfile());
+    const parents = await parentRepository.getParentsByCity(city, limit, skip);
+    return parents
+      .filter((parent) => parent.isActive !== false)
+      .map((parent) => parent.getPublicProfile());
   } catch (error) {
     logger.error('Get parents by city failed', {
       city,
@@ -124,15 +96,9 @@ const getParentsByCity = async (city, limit = 100, skip = 0) => {
   }
 };
 
-/*
- * Get children for parent
- * 
- * @params {parentId}: string - Parent ID
- * @returns Array of children
- */
 const getChildrenForParent = async (parentId) => {
   try {
-    const parent = await Parent.findById(parentId).populate('children');
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent) {
       const error = new Error('Parent not found');
@@ -141,7 +107,11 @@ const getChildrenForParent = async (parentId) => {
       throw error;
     }
 
-    return parent.children || [];
+    const children = await Promise.all(
+      (parent.childrenIds || []).map((id) => childRepository.getChild(id))
+    );
+
+    return children.filter(Boolean);
   } catch (error) {
     logger.error('Get children for parent failed', {
       parentId,
@@ -151,15 +121,9 @@ const getChildrenForParent = async (parentId) => {
   }
 };
 
-/*
- * Get wishlist courses for parent
- *
- * @params {parentId}: string - Parent ID
- * @returns Array of course summaries
- */
 const getWishlistForParent = async (parentId) => {
   try {
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not found');
@@ -185,16 +149,9 @@ const getWishlistForParent = async (parentId) => {
   }
 };
 
-/*
- * Add course to parent wishlist
- *
- * @params {parentId}: string - Parent ID
- * @params {courseId}: string - Course ID
- * @returns Array of course summaries
- */
 const addCourseToWishlist = async (parentId, courseId) => {
   try {
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not found');
@@ -203,28 +160,23 @@ const addCourseToWishlist = async (parentId, courseId) => {
       throw error;
     }
 
-    if (!Array.isArray(parent.wishlistCourseIds)) {
-      parent.wishlistCourseIds = [];
-    }
+    parent.wishlistCourseIds = parent.wishlistCourseIds || [];
 
-    if (parent.wishlistCourseIds.some(id => id.equals(courseId))) {
+    if (parent.wishlistCourseIds.some((id) => id === courseId)) {
       return await loadWishlistCourses(parent.wishlistCourseIds);
     }
 
-    const course = await Course.findOne({
-      _id: courseId,
-      isPublished: true
-    }).select('_id');
+    const course = await courseRepository.getCourse(courseId);
 
-    if (!course) {
+    if (!course || !course.isPublished) {
       const error = new Error('Course not found or not available');
       error.statusCode = 404;
       error.code = 'COURSE_NOT_FOUND';
       throw error;
     }
 
-    parent.wishlistCourseIds.push(course._id);
-    await parent.save();
+    parent.wishlistCourseIds.push(course.id);
+    await parentRepository.updateParent(parent.id, { wishlistCourseIds: parent.wishlistCourseIds });
 
     logger.info('Course added to parent wishlist', {
       parentId,
@@ -243,16 +195,9 @@ const addCourseToWishlist = async (parentId, courseId) => {
   }
 };
 
-/*
- * Remove course from parent wishlist
- *
- * @params {parentId}: string - Parent ID
- * @params {courseId}: string - Course ID
- * @returns Array of course summaries
- */
 const removeCourseFromWishlist = async (parentId, courseId) => {
   try {
-    const parent = await Parent.findById(parentId);
+    const parent = await parentRepository.getParent(parentId);
 
     if (!parent || !parent.isActive) {
       const error = new Error('Parent not found');
@@ -265,15 +210,13 @@ const removeCourseFromWishlist = async (parentId, courseId) => {
       return [];
     }
 
-    const updatedWishlist = parent.wishlistCourseIds.filter(id => !id.equals(courseId));
+    const updatedWishlist = parent.wishlistCourseIds.filter((id) => id !== courseId);
 
     if (updatedWishlist.length === parent.wishlistCourseIds.length) {
       return await loadWishlistCourses(parent.wishlistCourseIds);
     }
 
-    parent.wishlistCourseIds = updatedWishlist;
-    parent.markModified('wishlistCourseIds');
-    await parent.save();
+    await parentRepository.updateParent(parent.id, { wishlistCourseIds: updatedWishlist });
 
     logger.info('Course removed from parent wishlist', {
       parentId,
@@ -281,7 +224,7 @@ const removeCourseFromWishlist = async (parentId, courseId) => {
       action: 'remove_wishlist_course'
     });
 
-    return await loadWishlistCourses(parent.wishlistCourseIds);
+    return await loadWishlistCourses(updatedWishlist);
   } catch (error) {
     logger.error('Remove course from wishlist failed', {
       parentId,
@@ -292,17 +235,10 @@ const removeCourseFromWishlist = async (parentId, courseId) => {
   }
 };
 
-/*
- * Add child to parent
- * 
- * @params {parentId}: string - Parent ID
- * @params {childId}: string - Child ID
- * @returns Updated parent
- */
 const addChildToParent = async (parentId, childId) => {
   try {
-    const parent = await Parent.findById(parentId);
-    
+    const parent = await parentRepository.getParent(parentId);
+
     if (!parent) {
       const error = new Error('Parent not found');
       error.statusCode = 404;
@@ -310,8 +246,8 @@ const addChildToParent = async (parentId, childId) => {
       throw error;
     }
 
-    const child = await Child.findById(childId);
-    
+    const child = await childRepository.getChild(childId);
+
     if (!child) {
       const error = new Error('Child not found');
       error.statusCode = 404;
@@ -319,9 +255,10 @@ const addChildToParent = async (parentId, childId) => {
       throw error;
     }
 
+    parent.childrenIds = parent.childrenIds || [];
     if (!parent.childrenIds.includes(childId)) {
       parent.childrenIds.push(childId);
-      await parent.save();
+      await parentRepository.updateParent(parent.id, { childrenIds: parent.childrenIds });
     }
 
     logger.info('Child added to parent', {
@@ -341,17 +278,10 @@ const addChildToParent = async (parentId, childId) => {
   }
 };
 
-/*
- * Remove child from parent
- * 
- * @params {parentId}: string - Parent ID
- * @params {childId}: string - Child ID
- * @returns Updated parent
- */
 const removeChildFromParent = async (parentId, childId) => {
   try {
-    const parent = await Parent.findById(parentId);
-    
+    const parent = await parentRepository.getParent(parentId);
+
     if (!parent) {
       const error = new Error('Parent not found');
       error.statusCode = 404;
@@ -359,8 +289,8 @@ const removeChildFromParent = async (parentId, childId) => {
       throw error;
     }
 
-    parent.childrenIds = parent.childrenIds.filter(id => !id.equals(childId));
-    await parent.save();
+    const updated = (parent.childrenIds || []).filter((id) => id !== childId);
+    await parentRepository.updateParent(parent.id, { childrenIds: updated });
 
     logger.info('Child removed from parent', {
       parentId,
@@ -379,17 +309,10 @@ const removeChildFromParent = async (parentId, childId) => {
   }
 };
 
-/*
- * Delete parent with cascade option
- * 
- * @params {parentId}: string - Parent ID
- * @params {cascadeDelete}: boolean - Whether to delete children
- * @returns Success boolean
- */
 const deleteParent = async (parentId, cascadeDelete = false) => {
   try {
-    const parent = await Parent.findById(parentId);
-    
+    const parent = await parentRepository.getParent(parentId);
+
     if (!parent) {
       const error = new Error('Parent not found');
       error.statusCode = 404;
@@ -397,7 +320,7 @@ const deleteParent = async (parentId, cascadeDelete = false) => {
       throw error;
     }
 
-    if (parent.childrenIds.length > 0 && !cascadeDelete) {
+    if ((parent.childrenIds || []).length > 0 && !cascadeDelete) {
       const error = new Error(
         `Parent has ${parent.childrenIds.length} children. Enable cascade delete to remove all.`
       );
@@ -406,7 +329,7 @@ const deleteParent = async (parentId, cascadeDelete = false) => {
       throw error;
     }
 
-    if (cascadeDelete && parent.childrenIds.length > 0) {
+    if (cascadeDelete && (parent.childrenIds || []).length > 0) {
       logger.info('Cascade deleting children', {
         parentId,
         childCount: parent.childrenIds.length
@@ -414,7 +337,7 @@ const deleteParent = async (parentId, cascadeDelete = false) => {
 
       for (const childId of parent.childrenIds) {
         try {
-          await Child.findByIdAndDelete(childId);
+          await childRepository.deleteChild(childId);
         } catch (err) {
           logger.warn('Failed to delete child', {
             childId,
@@ -424,7 +347,7 @@ const deleteParent = async (parentId, cascadeDelete = false) => {
       }
     }
 
-    await Parent.findByIdAndDelete(parentId);
+    await parentRepository.deleteParent(parentId);
 
     logger.info('Parent deleted', {
       parentId,
@@ -442,14 +365,9 @@ const deleteParent = async (parentId, cascadeDelete = false) => {
   }
 };
 
-/*
- * Count total parents
- * 
- * @returns Total parent count
- */
 const countParents = async () => {
   try {
-    return await Parent.countDocuments({ isActive: true });
+    return await parentRepository.countParents();
   } catch (error) {
     logger.error('Count parents failed', {
       error: error.message
