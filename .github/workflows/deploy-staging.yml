@@ -78,8 +78,11 @@ jobs:
         id: image
         run: |
           SHORT_SHA="${GITHUB_SHA::12}"
+          TS_TAG="$(date +%Y%m%d%H%M%S)"
+          IMAGE_TAG="${TS_TAG}-${SHORT_SHA}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "image_uri=${{ secrets.ECR_REPO_STAGING }}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=${{ secrets.ECR_REPO_STAGING }}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
         env:
