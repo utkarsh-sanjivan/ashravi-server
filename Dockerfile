@@ -1,26 +1,26 @@
-# Lightweight Node.js image
+# Use a lightweight Node 18 image
 FROM node:18-alpine
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Install curl for healthchecks
+# Install curl for health checks
 RUN apk add --no-cache curl
 
-# Copy package files first (for better layer caching)
+# Copy package files first (layer caching)
 COPY package*.json ./
 
-# Install only production dependencies
-# NOTE: make sure "uuid" is in "dependencies" in package.json
-RUN npm ci --omit=dev
+# Install dependencies
+# IMPORTANT: "uuid" must be in "dependencies" in package.json
+RUN npm ci
 
-# Copy the rest of the application source
+# Copy the rest of the application code
 COPY . .
 
 # Create non-root user and logs directory
 RUN addgroup -S nodejs && adduser -S nodejs -G nodejs \
   && mkdir -p logs \
-  && chown -R nodejs:nodejs logs
+  && chown -R nodejs:nodejs .
 
 # Switch to non-root user
 USER nodejs
@@ -28,12 +28,12 @@ USER nodejs
 # Environment
 ENV NODE_ENV=production
 
-# Expose app port
+# Expose application port
 EXPOSE 3000
 
-# Health check (make sure /health-check route exists in your app)
+# Health check (make sure this route exists in your server)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health-check || exit 1
 
-# Start application
+# Start the app
 CMD ["npm", "start"]
