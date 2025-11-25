@@ -105,7 +105,27 @@ jobs:
         run: |
           BASE_TASK_DEF=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
           TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition "$BASE_TASK_DEF" --query 'taskDefinition')
-          UPDATED_TASK_DEF=$(echo "$TASK_DEF_JSON" | jq --arg IMAGE "$IMAGE_URI" '.containerDefinitions[0].image = $IMAGE')
+          UPDATED_TASK_DEF=$(echo "$TASK_DEF_JSON" | jq --arg IMAGE "$IMAGE_URI" '
+            .containerDefinitions[0].image = $IMAGE
+            | {
+              family,
+              taskRoleArn,
+              executionRoleArn,
+              networkMode,
+              containerDefinitions,
+              volumes,
+              placementConstraints,
+              requiresCompatibilities,
+              cpu,
+              memory,
+              pidMode,
+              ipcMode,
+              proxyConfiguration,
+              inferenceAccelerators,
+              ephemeralStorage,
+              runtimePlatform
+            }
+          ')
           echo "$UPDATED_TASK_DEF" > /tmp/task-def.json
           REGISTERED=$(aws ecs register-task-definition --cli-input-json file:///tmp/task-def.json)
           NEW_REVISION=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
