@@ -35,9 +35,9 @@
   "author": "Developer",
   "license": "MIT",
   "dependencies": {
-    "@faker-js/faker": "^8.4.1",
     "@aws-sdk/client-dynamodb": "^3.676.0",
     "@aws-sdk/lib-dynamodb": "^3.676.0",
+    "@faker-js/faker": "^8.4.1",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "compression": "^1.7.4",

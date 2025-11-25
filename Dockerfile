@@ -11,9 +11,10 @@ RUN apk add --no-cache curl
 COPY package*.json ./
 
 # Install dependencies
-# IMPORTANT: "uuid" must be in "dependencies" in package.json
-RUN npm i uuid@8.3.2
-RUN npm ci --omit=dev
+# NOTE: npm ci will remove anything not in package-lock.
+# If uuid somehow goes missing from the lockfile, fail fast and install it.
+RUN npm ci --omit=dev \
+  && (npm ls uuid >/dev/null 2>&1 || npm install uuid@8.3.2 --omit=dev --no-package-lock)
 
 # Copy the rest of the application code
 COPY . .
