@@ -55,6 +55,17 @@ jobs:
         run: |
           docker push ${{ steps.image.outputs.image_uri }}
           docker push ${{ secrets.ECR_REPO_PRODUCTION }}:latest
+      - name: Register new task definition revision
+        env:
+          TASK_DEFINITION: ${{ secrets.ECS_TASK_DEFINITION_PRODUCTION }}
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+        run: |
+          TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition "$TASK_DEFINITION" --query 'taskDefinition')
+          UPDATED_TASK_DEF=$(echo "$TASK_DEF_JSON" | jq --arg IMAGE "$IMAGE_URI" '.containerDefinitions[0].image = $IMAGE')
+          echo "$UPDATED_TASK_DEF" > /tmp/task-def.json
+          REGISTERED=$(aws ecs register-task-definition --cli-input-json file:///tmp/task-def.json)
+          NEW_REVISION=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
+          echo "new_task_def_arn=$NEW_REVISION" >> $GITHUB_ENV
       - name: Force ECS deployment
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
@@ -63,7 +74,7 @@ jobs:
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
-            --task-definition asharvi-backend-staging \
+            --task-definition "$NEW_TASK_DEF_ARN" \
             --force-new-deployment
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
