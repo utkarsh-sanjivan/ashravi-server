@@ -27,38 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      ############################################################
-      # 1) Prepare OIDC variables (Needed for requesting a token)
-      ############################################################
-      - name: Prepare OIDC Variables
-        id: prep
-        run: |
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL=${ACTIONS_ID_TOKEN_REQUEST_URL}" >> $GITHUB_ENV
-          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> $GITHUB_ENV
-
-      ############################################################
-      # 2) Fetch the actual OIDC token GitHub generates
-      ############################################################
-      - name: Generate OIDC Token
-        id: oidc
-        run: |
-          RESPONSE=$(curl -sSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
-      ############################################################
-      # 3) Decode and print OIDC claims (THIS is what AWS checks)
-      ############################################################
-      - name: Decode OIDC Token Claims
-        run: |
-          TOKEN=${{ steps.oidc.outputs.token }}
-          echo "🔍 Decoded OIDC token claims:"
-          echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq .
-
-      ############################################################
-      # 4) Configure AWS Credentials (ONLY AFTER debugging)
-      ############################################################
+      # Configure AWS via OIDC
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -66,81 +35,121 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           audience: sts.amazonaws.com
 
-      ############################################################
-      # 5) ECS Deploy Steps (unchanged)
-      ############################################################
-
+      # ECR login
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Compute image tag + URI
       - name: Set image metadata
         id: image
         run: |
           SHORT_SHA="${GITHUB_SHA::12}"
           TS_TAG="$(date +%Y%m%d%H%M%S)"
           IMAGE_TAG="${TS_TAG}-${SHORT_SHA}"
+
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${{ secrets.ECR_REPO_STAGING }}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
+      # Build Docker image
       - name: Build Docker image
         env:
           DOCKER_BUILDKIT: 1
-        run: docker build --platform linux/amd64 -t ${{ steps.image.outputs.image_uri }} .
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t "${{ steps.image.outputs.image_uri }}" \
+            .
 
+      # Tag image as latest
       - name: Tag image as latest
-        run: docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_STAGING }}:latest
+        run: |
+          docker tag \
+            "${{ steps.image.outputs.image_uri }}" \
+            "${{ secrets.ECR_REPO_STAGING }}:latest"
 
+      # Push both timestamped + latest tags
       - name: Push images to ECR
         run: |
-          docker push ${{ steps.image.outputs.image_uri }}
-          docker push ${{ secrets.ECR_REPO_STAGING }}:latest
+          docker push "${{ steps.image.outputs.image_uri }}"
+          docker push "${{ secrets.ECR_REPO_STAGING }}:latest"
 
+      # Register a new task definition revision with updated image
       - name: Register new task definition revision
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
           ECS_SERVICE: ${{ secrets.ECS_SERVICE_STAGING }}
           IMAGE_URI: ${{ steps.image.outputs.image_uri }}
         run: |
-          BASE_TASK_DEF=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
-          TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition "$BASE_TASK_DEF" --query 'taskDefinition')
+          set -euo pipefail
+
+          # Get current task definition ARN from the service
+          BASE_TASK_DEF=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          # Get full taskDefinition JSON
+          TASK_DEF_JSON=$(aws ecs describe-task-definition \
+            --task-definition "$BASE_TASK_DEF" \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Swap image, then rebuild minimal JSON and drop null fields
           UPDATED_TASK_DEF=$(echo "$TASK_DEF_JSON" | jq --arg IMAGE "$IMAGE_URI" '
             .containerDefinitions[0].image = $IMAGE
             | {
-              family,
-              taskRoleArn,
-              executionRoleArn,
-              networkMode,
-              containerDefinitions,
-              volumes,
-              placementConstraints,
-              requiresCompatibilities,
-              cpu,
-              memory,
-              pidMode,
-              ipcMode,
-              proxyConfiguration,
-              inferenceAccelerators,
-              ephemeralStorage,
-              runtimePlatform
-            }
+                family,
+                taskRoleArn,
+                executionRoleArn,
+                networkMode,
+                containerDefinitions,
+                volumes,
+                placementConstraints,
+                requiresCompatibilities,
+                cpu,
+                memory,
+                pidMode,
+                ipcMode,
+                proxyConfiguration,
+                inferenceAccelerators,
+                ephemeralStorage,
+                runtimePlatform
+              }
+            | with_entries(select(.value != null))
           ')
-          echo "$UPDATED_TASK_DEF" > /tmp/task-def.json
-          REGISTERED=$(aws ecs register-task-definition --cli-input-json file:///tmp/task-def.json)
-          NEW_REVISION=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
-          echo "new_task_def_arn=$NEW_REVISION" >> $GITHUB_ENV
 
+          echo "$UPDATED_TASK_DEF" > /tmp/task-def.json
+
+          # Register new revision
+          REGISTERED=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-def.json)
+
+          NEW_REVISION_ARN=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
+
+          echo "NEW_TASK_DEF_ARN=$NEW_REVISION_ARN" >> "$GITHUB_ENV"
+          echo "Registered new task definition: $NEW_REVISION_ARN"
+
+      # Update service to use new revision and wait until stable
       - name: Force ECS deployment
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
           ECS_SERVICE: ${{ secrets.ECS_SERVICE_STAGING }}
         run: |
+          set -euo pipefail
+
+          echo "Updating service $ECS_SERVICE to use: $NEW_TASK_DEF_ARN"
+
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEF_ARN" \
             --force-new-deployment
+
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
+
+          echo "Service is stable with new task definition."
