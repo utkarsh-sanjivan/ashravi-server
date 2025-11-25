@@ -12,7 +12,7 @@ COPY package*.json ./
 
 # Install dependencies
 # IMPORTANT: "uuid" must be in "dependencies" in package.json
-RUN npm ci
+RUN npm ci --omit=dev
 
 # Copy the rest of the application code
 COPY . .
