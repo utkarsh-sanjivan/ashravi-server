@@ -240,19 +240,50 @@ Indexes created by `scripts/createDynamoTables.js`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `APP_ENV` | Environment name used for AWS Secrets Manager lookup | Mirrors `NODE_ENV` |
 | `NODE_ENV` | Environment mode | `development` |
 | `PORT` | Server port | `3000` |
 | `HOST` | Server host | `localhost` |
 | `AWS_REGION` | AWS region for DynamoDB | `us-east-1` |
+| `AWS_SECRETS_MANAGER_ENABLED` | Load config from AWS Secrets Manager before boot | `true` outside tests |
+| `AWS_SECRETS_MANAGER_PREFIX` | Prefix for Secrets Manager IDs (`{prefix}/{app_env}`) | `asharvi/backend` |
+| `AWS_SECRETS_MANAGER_SECRET_ID` | Explicit secret name/ARN (overrides prefix) | _none_ |
+| `AWS_SECRETS_MANAGER_REQUIRED` | Fail startup if secrets cannot be loaded | `false` |
 | `DYNAMO_TABLE_NAME` | Single DynamoDB table used for all entities | `asharvi-dynamo-staging` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `JWT_SECRET` | JWT signing secret | Required |
+| `JWT_REFRESH_SECRET` | Refresh token signing secret | Falls back to `JWT_SECRET` |
 | `JWT_EXPIRES_IN` | JWT expiration time | `7d` |
 | `SESSION_SECRET` | Session secret | Required |
 | `CORS_ORIGIN` | Allowed CORS origins | `http://localhost:3000` |
+| `SMTP_HOST` | SMTP host for email | _none_ |
+| `SMTP_PORT` | SMTP port | `587` |
+| `SMTP_SECURE` | Use TLS for SMTP | `false` |
+| `SMTP_USER` | SMTP username | _none_ |
+| `SMTP_PASSWORD` | SMTP password | _none_ |
+| `SMTP_FROM_EMAIL` | From email address | `SMTP_USER` |
+| `TWILIO_ACCOUNT_SID` | Twilio account SID | _none_ |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token | _none_ |
+| `TWILIO_FROM_NUMBER` | Twilio sender number (E.164) | _none_ |
 | `LOG_LEVEL` | Logging level | `info` |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window | `900000` |
 | `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `100` |
+
+When `AWS_SECRETS_MANAGER_ENABLED` is true (default outside tests), the app will attempt to load secrets before booting. By default it looks for a JSON secret at `asharvi/backend/{APP_ENV}`. For staging/production you can store a payload like:
+
+```json
+{
+  "JWT_SECRET": "some-long-random-string...",
+  "JWT_REFRESH_SECRET": "another-long-random-string...",
+  "SMTP_USER": "your SMTP username",
+  "SMTP_PASSWORD": "your SMTP password",
+  "TWILIO_ACCOUNT_SID": "from Twilio dashboard",
+  "TWILIO_AUTH_TOKEN": "from Twilio dashboard",
+  "TWILIO_FROM_NUMBER": "+91xxxxxxxxxx"
+}
+```
+
+Set `AWS_SECRETS_MANAGER_SECRET_ID` (or `AWS_SECRETS_MANAGER_SECRET_ID_STAGING`/`..._PRODUCTION`) if you need to override the default naming convention.
 
 If your ECS run command expects an env file (for example `--env-file .env.staging.local`), copy the template and fill it with your staging values:
 
