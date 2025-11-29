@@ -235,6 +235,14 @@ Visit http://localhost:3000/api/v1/docs for interactive API documentation (Swagg
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window | `900000` |
 | `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `100` |
 
+If your ECS run command expects an env file (for example `--env-file .env.staging.local`), copy the template and fill it with your staging values:
+
+```bash
+cp .env.staging.local.example .env.staging.local
+```
+
+The template is tracked for convenience; the actual `.env.staging.local` stays ignored so secrets are not committed.
+
 ### Database Configuration
 
 The application uses MongoDB with Mongoose ODM. Key features:
