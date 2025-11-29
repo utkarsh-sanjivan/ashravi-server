@@ -1,17 +1,19 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildQuestionKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.questions;
 const IMMUTABLE_FIELDS = new Set(['id', 'createdAt', 'usageCount']);
 
 const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
 const createQuestion = async (data) => {
+  const id = data.id || uuidv4();
   const payload = {
     ...data,
-    id: data.id || uuidv4(),
+    ...buildQuestionKeys(id),
+    id,
     usageCount: data.usageCount || 0,
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || new Date().toISOString()
@@ -22,20 +24,21 @@ const createQuestion = async (data) => {
 };
 
 const getQuestion = async (questionId) => {
-  const question = await dynamoRepository.getById(tableName, questionId);
+  const { pk, sk } = buildQuestionKeys(questionId);
+  const question = await dynamoRepository.getItem(tableName, pk, sk);
   return format(question);
 };
 
 const getQuestionsByIds = async (ids = []) => {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   const set = new Set(ids.map((id) => id.toString()));
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'question');
   const filtered = (items || []).filter((q) => set.has((q.id || '').toString()));
   return filtered.map(format);
 };
 
 const getQuestionsByCategory = async (category, limit = 100, activeOnly = true) => {
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'question');
   const filtered = (items || []).filter(
     (q) =>
       q.category === category &&
@@ -45,7 +48,7 @@ const getQuestionsByCategory = async (category, limit = 100, activeOnly = true) 
 };
 
 const getQuestionsByIssue = async (issueId, limit = 100) => {
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'question');
   const filtered = (items || []).filter((q) =>
     (q.issueWeightages || []).some((iw) => iw.issueId === issueId)
   );
@@ -53,16 +56,17 @@ const getQuestionsByIssue = async (issueId, limit = 100) => {
 };
 
 const incrementUsageCount = async (questionId) => {
-  const question = await dynamoRepository.getById(tableName, questionId);
+  const { pk, sk } = buildQuestionKeys(questionId);
+  const question = await dynamoRepository.getItem(tableName, pk, sk);
   if (!question) return null;
-  const updated = await dynamoRepository.updateById(tableName, questionId, {
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     usageCount: (question.usageCount || 0) + 1
   });
   return format(updated);
 };
 
 const getQuestions = async (filters = {}, page = 1, limit = 20, sort = { createdAt: -1 }) => {
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'question');
 
   let filtered = items || [];
 
@@ -123,17 +127,20 @@ const updateQuestion = async (questionId, data) => {
     if (!IMMUTABLE_FIELDS.has(key)) sanitized[key] = value;
   });
 
-  const updated = await dynamoRepository.updateById(tableName, questionId, sanitized);
+  const { pk, sk } = buildQuestionKeys(questionId);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, sanitized);
   return format(updated);
 };
 
 const deleteQuestion = async (questionId) => {
-  await dynamoRepository.deleteById(tableName, questionId);
+  const { pk, sk } = buildQuestionKeys(questionId);
+  await dynamoRepository.deleteItem(tableName, pk, sk);
   return true;
 };
 
 const toggleActiveStatus = async (questionId, isActive) => {
-  const updated = await dynamoRepository.updateById(tableName, questionId, { isActive });
+  const { pk, sk } = buildQuestionKeys(questionId);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, { isActive });
   return format(updated);
 };
 

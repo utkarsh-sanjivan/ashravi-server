@@ -3,45 +3,68 @@ const { DynamoDBClient, CreateTableCommand } = require('@aws-sdk/client-dynamodb
 const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
 const client = new DynamoDBClient({ region });
 
-const tables = [
-  process.env.PARENTS_TABLE_NAME || 'parents',
-  process.env.CHILDREN_TABLE_NAME || 'children',
-  process.env.COURSES_TABLE_NAME || 'courses',
-  process.env.COURSE_PROGRESS_TABLE_NAME || 'course_progress',
-  process.env.INSTRUCTORS_TABLE_NAME || 'instructors',
-  process.env.QUESTIONS_TABLE_NAME || 'questions',
-  process.env.OTPS_TABLE_NAME || 'otps',
-  process.env.CHILD_EDUCATION_TABLE_NAME || 'child_education',
-  process.env.CHILD_NUTRITION_TABLE_NAME || 'child_nutrition'
-];
+const tableName = process.env.DYNAMO_TABLE_NAME || 'asharvi-dynamo-staging';
 
-const createTableParams = (TableName) => ({
-  TableName,
+const createTableParams = {
+  TableName: tableName,
   AttributeDefinitions: [
-    { AttributeName: 'id', AttributeType: 'S' }
+    { AttributeName: 'pk', AttributeType: 'S' },
+    { AttributeName: 'sk', AttributeType: 'S' },
+    { AttributeName: 'entityType', AttributeType: 'S' },
+    { AttributeName: 'email', AttributeType: 'S' },
+    { AttributeName: 'slug', AttributeType: 'S' }
   ],
   KeySchema: [
-    { AttributeName: 'id', KeyType: 'HASH' }
+    { AttributeName: 'pk', KeyType: 'HASH' },
+    { AttributeName: 'sk', KeyType: 'RANGE' }
   ],
-  BillingMode: 'PAY_PER_REQUEST'
-});
+  BillingMode: 'PAY_PER_REQUEST',
+  GlobalSecondaryIndexes: [
+    {
+      IndexName: 'entityType-index',
+      KeySchema: [
+        { AttributeName: 'entityType', KeyType: 'HASH' },
+        { AttributeName: 'sk', KeyType: 'RANGE' }
+      ],
+      Projection: { ProjectionType: 'ALL' },
+      BillingMode: 'PAY_PER_REQUEST'
+    },
+    {
+      IndexName: 'email-index',
+      KeySchema: [
+        { AttributeName: 'email', KeyType: 'HASH' },
+        { AttributeName: 'sk', KeyType: 'RANGE' }
+      ],
+      Projection: { ProjectionType: 'ALL' },
+      BillingMode: 'PAY_PER_REQUEST'
+    },
+    {
+      IndexName: 'slug-index',
+      KeySchema: [
+        { AttributeName: 'slug', KeyType: 'HASH' },
+        { AttributeName: 'sk', KeyType: 'RANGE' }
+      ],
+      Projection: { ProjectionType: 'ALL' },
+      BillingMode: 'PAY_PER_REQUEST'
+    }
+  ]
+};
 
-const createTables = async () => {
-  for (const tableName of tables) {
-    try {
-      await client.send(new CreateTableCommand(createTableParams(tableName)));
-      console.log(`Created table ${tableName}`);
-    } catch (error) {
-      if (error.name === 'ResourceInUseException') {
-        console.log(`Table ${tableName} already exists, skipping`);
-      } else {
-        console.error(`Failed to create table ${tableName}:`, error.message);
-      }
+const createTable = async () => {
+  try {
+    await client.send(new CreateTableCommand(createTableParams));
+    console.log(`Created table ${tableName}`);
+  } catch (error) {
+    if (error.name === 'ResourceInUseException') {
+      console.log(`Table ${tableName} already exists, skipping`);
+    } else {
+      console.error(`Failed to create table ${tableName}:`, error.message);
+      throw error;
     }
   }
 };
 
-createTables().catch((err) => {
-  console.error('Error creating tables:', err);
+createTable().catch((err) => {
+  console.error('Error creating table:', err);
   process.exit(1);
 });

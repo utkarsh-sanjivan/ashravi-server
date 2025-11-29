@@ -100,7 +100,7 @@ npm install
 ```
 
 2. **Configure environment variables:**
-   - Set `AWS_REGION`, table names (`PARENTS_TABLE_NAME`, `CHILDREN_TABLE_NAME`, `COURSES_TABLE_NAME`, `COURSE_PROGRESS_TABLE_NAME`, `INSTRUCTORS_TABLE_NAME`, `QUESTIONS_TABLE_NAME`, `OTPS_TABLE_NAME`, `CHILD_EDUCATION_TABLE_NAME`, `CHILD_NUTRITION_TABLE_NAME`), `JWT_SECRET`, mail/SMS creds, CORS settings, etc.
+   - Set `AWS_REGION`, `DYNAMO_TABLE_NAME` (e.g., `asharvi-dynamo-staging` or `asharvi-dynamo-production`), `JWT_SECRET`, mail/SMS creds, CORS settings, etc.
 
 3. **Start development server:**
 ```bash
@@ -124,6 +124,33 @@ This will start:
 ## 📖 API Documentation
 
 Visit http://localhost:3000/api/v1/docs for interactive API documentation (Swagger UI).
+
+## 📦 DynamoDB single-table model
+
+The backend now uses a single DynamoDB table per environment (set `DYNAMO_TABLE_NAME`). All items share the following keys:
+
+- **Partition key (`pk`)** and **sort key (`sk`)**
+- **entityType** attribute to distinguish item types
+
+Key patterns:
+
+- Parent: `pk = PARENT#<parentId>`, `sk = PARENT#<parentId>`
+- Child: `pk = PARENT#<parentId>`, `sk = CHILD#<childId>`
+- Course: `pk = COURSE#<courseId>`, `sk = COURSE#<courseId>`
+- Course progress: `pk = USER#<userId>`, `sk = COURSE_PROGRESS#<courseId>#<progressId>`
+- Instructor: `pk = INSTRUCTOR#<id>`, `sk = INSTRUCTOR#<id>`
+- Question: `pk = QUESTION#<id>`, `sk = QUESTION#<id>`
+- OTP: `pk = OTP#<contact>`, `sk = OTP#<otpId>`
+- Child education: `pk = CHILD#<childId>`, `sk = EDU#<recordId>`
+- Child nutrition: `pk = CHILD#<childId>`, `sk = NUT#<recordId>`
+
+Indexes created by `scripts/createDynamoTables.js`:
+
+- `entityType-index` (entityType, sk) for type-based queries
+- `email-index` (email, sk) for parent/instructor lookups
+- `slug-index` (slug, sk) for course lookups
+
+> **Migration note:** existing data in the legacy per-entity tables must be backfilled into the new single table using the key patterns above before the application is switched over.
 
 ### Key Endpoints
 
@@ -217,15 +244,7 @@ Visit http://localhost:3000/api/v1/docs for interactive API documentation (Swagg
 | `PORT` | Server port | `3000` |
 | `HOST` | Server host | `localhost` |
 | `AWS_REGION` | AWS region for DynamoDB | `us-east-1` |
-| `PARENTS_TABLE_NAME` | DynamoDB table for parents | `parents` |
-| `CHILDREN_TABLE_NAME` | DynamoDB table for children | `children` |
-| `COURSES_TABLE_NAME` | DynamoDB table for courses | `courses` |
-| `COURSE_PROGRESS_TABLE_NAME` | DynamoDB table for course progress | `course_progress` |
-| `INSTRUCTORS_TABLE_NAME` | DynamoDB table for instructors | `instructors` |
-| `QUESTIONS_TABLE_NAME` | DynamoDB table for questions | `questions` |
-| `OTPS_TABLE_NAME` | DynamoDB table for OTPs | `otps` |
-| `CHILD_EDUCATION_TABLE_NAME` | DynamoDB table for child education | `child_education` |
-| `CHILD_NUTRITION_TABLE_NAME` | DynamoDB table for child nutrition | `child_nutrition` |
+| `DYNAMO_TABLE_NAME` | Single DynamoDB table used for all entities | `asharvi-dynamo-staging` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `JWT_SECRET` | JWT signing secret | Required |
 | `JWT_EXPIRES_IN` | JWT expiration time | `7d` |

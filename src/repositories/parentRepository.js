@@ -1,10 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { tables } = require('../config/dynamoConfig');
+const { v4: uuidv4 } = require('uuid');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildParentKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.parents;
 const IMMUTABLE_FIELDS = new Set(['id', 'createdAt']);
 
 const attachHelpers = (item) => {
@@ -56,8 +57,11 @@ const createParent = async (parentData) => {
 
   const passwordHash = await bcrypt.hash(parentData.password, 12);
 
+  const id = parentData.id || uuidv4();
   const payload = {
     ...parentData,
+    ...buildParentKeys(id),
+    id,
     email,
     password: passwordHash,
     childrenIds: parentData.childrenIds || [],
@@ -72,23 +76,43 @@ const createParent = async (parentData) => {
 };
 
 const getParent = async (parentId) => {
-  const item = await dynamoRepository.getById(tableName, parentId);
+  const { pk, sk } = buildParentKeys(parentId);
+  const item = await dynamoRepository.getItem(tableName, pk, sk);
   return attachHelpers(item);
 };
 
 const getParentByEmail = async (email) => {
   if (!email) return null;
   const normalized = email.toLowerCase().trim();
-  const { items } = await dynamoRepository.scanByField(tableName, 'email', normalized);
-  return attachHelpers(items[0] || null);
+  const { items } = await dynamoRepository.queryByEmail(tableName, normalized, {
+    filterExpression: '#et = :type',
+    expressionNames: { '#et': 'entityType' },
+    expressionValues: { ':type': 'parent' },
+    limit: 1
+  });
+  return attachHelpers(items?.[0] || null);
 };
 
 const getParentsByCity = async (city, limit = 100, skip = 0) => {
   if (!city) return [];
   const normalized = city.toLowerCase();
-  const items = await dynamoRepository.scanAll(tableName);
-  const filtered = items.filter((p) => (p.city || '').toLowerCase() === normalized);
-  const sliced = filtered.slice(skip, skip + limit);
+  let lastKey;
+  const collected = [];
+  do {
+    const { items, lastKey: nextKey } = await dynamoRepository.queryByEntityType(tableName, 'parent', {
+      lastKey,
+      filterExpression: 'begins_with(#city, :city)',
+      expressionNames: { '#city': 'city' },
+      expressionValues: { ':city': normalized }
+    });
+    collected.push(...(items || []).filter((p) => (p.city || '').toLowerCase() === normalized));
+    lastKey = nextKey;
+    if (collected.length >= skip + limit || !lastKey) {
+      break;
+    }
+  } while (lastKey);
+
+  const sliced = collected.slice(skip, skip + limit);
   return sliced.map(attachHelpers);
 };
 
@@ -108,18 +132,28 @@ const updateParent = async (parentId, updateData) => {
     sanitized.password = await bcrypt.hash(sanitized.password, 12);
   }
 
-  const updated = await dynamoRepository.updateById(tableName, parentId, sanitized);
+  const { pk, sk } = buildParentKeys(parentId);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, sanitized);
   return attachHelpers(updated);
 };
 
 const deleteParent = async (parentId) => {
-  await dynamoRepository.deleteById(tableName, parentId);
+  const { pk, sk } = buildParentKeys(parentId);
+  await dynamoRepository.deleteItem(tableName, pk, sk);
   return true;
 };
 
 const countParents = async () => {
-  const items = await dynamoRepository.scanAll(tableName);
-  return items.length;
+  let lastKey;
+  let count = 0;
+  do {
+    const { items, lastKey: nextKey } = await dynamoRepository.queryByEntityType(tableName, 'parent', {
+      lastKey
+    });
+    count += (items || []).length;
+    lastKey = nextKey;
+  } while (lastKey);
+  return count;
 };
 
 module.exports = {

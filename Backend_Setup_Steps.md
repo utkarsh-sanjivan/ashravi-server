@@ -23,7 +23,7 @@
 
 ## 3. Configure Secrets and Environment Values
 1. **AWS Secrets Manager**
-   - Create secret `asharvi/backend/prod` with JSON keys like `AWS_REGION`, `PARENTS_TABLE_NAME`, `CHILDREN_TABLE_NAME`, `COURSES_TABLE_NAME`, `COURSE_PROGRESS_TABLE_NAME`, `INSTRUCTORS_TABLE_NAME`, `QUESTIONS_TABLE_NAME`, `OTPS_TABLE_NAME`, `CHILD_EDUCATION_TABLE_NAME`, `CHILD_NUTRITION_TABLE_NAME`, `JWT_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`.
+   - Create secret `asharvi/backend/prod` with JSON keys like `AWS_REGION`, `DYNAMO_TABLE_NAME`, `JWT_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`.
    - For staging, duplicate as `asharvi/backend/staging` with appropriate values.
 2. **Parameter Store (optional)**
    - Store non-sensitive settings (log level, feature flags) as parameters.
