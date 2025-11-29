@@ -23,8 +23,8 @@
 
 ## 3. Configure Secrets and Environment Values
 1. **AWS Secrets Manager**
-   - Create secret `asharvi/backend/prod` with JSON keys like `AWS_REGION`, `DYNAMO_TABLE_NAME`, `JWT_SECRET`, `SMTP_USER`, `SMTP_PASS`, `CORS_ORIGIN`.
-   - For staging, duplicate as `asharvi/backend/staging` with appropriate values.
+   - Create secret `asharvi/backend/prod` with JSON keys like `AWS_REGION`, `DYNAMO_TABLE_NAME`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SMTP_USER`, `SMTP_PASSWORD`, `CORS_ORIGIN`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`.
+   - For staging, duplicate as `asharvi/backend/staging` (or override via `AWS_SECRETS_MANAGER_SECRET_ID_STAGING`) with appropriate values.
 2. **Parameter Store (optional)**
    - Store non-sensitive settings (log level, feature flags) as parameters.
 3. **Update IAM policies** to grant the ECS task role read access to these secrets/parameters only.
