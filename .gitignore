@@ -29,6 +29,7 @@ out/
 .env.test.local
 .env.production.local
 .env.*.local
+!.env.staging.local.example
 
 # Logs
 logs/
