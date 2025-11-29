@@ -1,9 +1,9 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildChildKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.children;
 const IMMUTABLE_FIELDS = new Set(['id', 'createdAt']);
 
 const formatDocument = (doc) => {
@@ -13,9 +13,11 @@ const formatDocument = (doc) => {
 
 const createChild = async (childData) => {
   try {
+    const id = childData.id || uuidv4();
     const payload = {
       ...childData,
-      id: childData.id || uuidv4(),
+      ...buildChildKeys(childData.parentId, id),
+      id,
       courseIds: childData.courseIds || [],
       createdAt: childData.createdAt || new Date().toISOString(),
       updatedAt: childData.updatedAt || new Date().toISOString()
@@ -31,7 +33,13 @@ const createChild = async (childData) => {
 
 const getChild = async (childId) => {
   try {
-    const child = await dynamoRepository.getById(tableName, childId);
+    const { items } = await dynamoRepository.queryByEntityType(tableName, 'child', {
+      filterExpression: '#id = :id',
+      expressionNames: { '#id': 'id' },
+      expressionValues: { ':id': childId },
+      limit: 1
+    });
+    const child = items?.[0];
     return formatDocument(child);
   } catch (error) {
     logger.error('Error fetching child', { childId, error: error.message });
@@ -41,8 +49,8 @@ const getChild = async (childId) => {
 
 const getChildrenByParent = async (parentId, limit = 100, skip = 0) => {
   try {
-    const { items } = await dynamoRepository.scanByField(tableName, 'parentId', parentId, {
-      limit: undefined
+    const { items } = await dynamoRepository.queryByPk(tableName, `PARENT#${parentId}`, {
+      beginsWith: 'CHILD#'
     });
     const sorted = (items || []).sort(
       (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
@@ -72,7 +80,10 @@ const updateChild = async (childId, updateData) => {
       return await getChild(childId);
     }
 
-    const updated = await dynamoRepository.updateById(tableName, childId, sanitizedData);
+    const existing = await getChild(childId);
+    if (!existing) return null;
+    const { pk, sk } = buildChildKeys(existing.parentId, childId);
+    const updated = await dynamoRepository.updateItem(tableName, pk, sk, sanitizedData);
     if (!updated) {
       logger.warn('Child not found for update', { childId });
       return null;
@@ -88,7 +99,10 @@ const updateChild = async (childId, updateData) => {
 
 const deleteChild = async (childId) => {
   try {
-    await dynamoRepository.deleteById(tableName, childId);
+    const existing = await getChild(childId);
+    if (!existing) return true;
+    const { pk, sk } = buildChildKeys(existing.parentId, childId);
+    await dynamoRepository.deleteItem(tableName, pk, sk);
     logger.info('Child deleted successfully', { childId });
     return true;
   } catch (error) {
@@ -99,7 +113,9 @@ const deleteChild = async (childId) => {
 
 const countChildrenByParent = async (parentId) => {
   try {
-    const { items } = await dynamoRepository.scanByField(tableName, 'parentId', parentId);
+    const { items } = await dynamoRepository.queryByPk(tableName, `PARENT#${parentId}`, {
+      beginsWith: 'CHILD#'
+    });
     return (items || []).length;
   } catch (error) {
     logger.error('Error counting children', { parentId, error: error.message });
@@ -112,11 +128,12 @@ const addCoursesToChild = async (childId, courseIds) => {
     const child = await getChild(childId);
     if (!child) return null;
 
-    const existing = new Set(child.courseIds || []);
-    courseIds.forEach((id) => existing.add(id));
+    const courseIdSet = new Set(child.courseIds || []);
+    courseIds.forEach((id) => courseIdSet.add(id));
 
-    const updated = await dynamoRepository.updateById(tableName, childId, {
-      courseIds: Array.from(existing)
+    const { pk, sk } = buildChildKeys(child.parentId, childId);
+    const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
+      courseIds: Array.from(courseIdSet)
     });
 
     logger.info('Courses added to child', { childId, courseIds });

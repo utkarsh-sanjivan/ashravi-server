@@ -1,20 +1,13 @@
-const { v4: uuidv4 } = require('uuid');
 const { commands } = require('../db/dynamodbClient');
-const logger = require('../utils/logger');
 
 const now = () => new Date().toISOString();
 
-const ensureId = (item = {}) => {
-  if (item.id) return item;
-  return { ...item, id: uuidv4() };
-};
-
 const createItem = async (tableName, item) => {
-  const payload = ensureId({
+  const payload = {
     ...item,
     createdAt: item.createdAt || now(),
     updatedAt: item.updatedAt || now()
-  });
+  };
   await commands.put({
     TableName: tableName,
     Item: payload
@@ -22,28 +15,24 @@ const createItem = async (tableName, item) => {
   return payload;
 };
 
-const getById = async (tableName, id) => {
+const getItem = async (tableName, pk, sk) => {
   const result = await commands.get({
     TableName: tableName,
-    Key: { id }
+    Key: { pk, sk }
   });
   return result.Item || null;
 };
 
-const deleteById = async (tableName, id) => {
+const deleteItem = async (tableName, pk, sk) => {
   await commands.delete({
     TableName: tableName,
-    Key: { id }
+    Key: { pk, sk }
   });
   return true;
 };
 
-const updateById = async (tableName, id, data) => {
-  const keys = Object.keys(data || {}).filter((k) => data[k] !== undefined);
-  if (keys.length === 0) {
-    return getById(tableName, id);
-  }
-
+const buildUpdateExpressions = (data = {}) => {
+  const keys = Object.keys(data).filter((k) => data[k] !== undefined);
   const expressionParts = [];
   const expressionValues = {};
   const expressionNames = {};
@@ -60,9 +49,18 @@ const updateById = async (tableName, id, data) => {
   expressionValues[':updatedAt'] = now();
   expressionParts.push('#updatedAt = :updatedAt');
 
+  return { expressionParts, expressionValues, expressionNames };
+};
+
+const updateItem = async (tableName, pk, sk, data) => {
+  const { expressionParts, expressionValues, expressionNames } = buildUpdateExpressions(data);
+  if (expressionParts.length === 1) {
+    return getItem(tableName, pk, sk);
+  }
+
   const result = await commands.update({
     TableName: tableName,
-    Key: { id },
+    Key: { pk, sk },
     UpdateExpression: `SET ${expressionParts.join(', ')}`,
     ExpressionAttributeNames: expressionNames,
     ExpressionAttributeValues: expressionValues,
@@ -72,57 +70,82 @@ const updateById = async (tableName, id, data) => {
   return result.Attributes || null;
 };
 
-const scanAll = async (tableName, limit) => {
-  let items = [];
-  let lastKey;
-  do {
-    try {
-      const params = {
-        TableName: tableName,
-        Limit: limit ? Math.min(limit - items.length, limit) : undefined,
-        ExclusiveStartKey: lastKey
-      };
-      const result = await commands.scan(params);
-      items = items.concat(result.Items || []);
-      lastKey = result.LastEvaluatedKey;
-      if (limit && items.length >= limit) {
-        break;
-      }
-    } catch (err) {
-      logger.error('Dynamo scan failed', { tableName, error: err.message });
-      throw err;
-    }
-  } while (lastKey);
-  return items;
-};
-
-const scanByField = async (tableName, field, value, options = {}) => {
-  const { limit, startKey } = options;
+const queryByPk = async (
+  tableName,
+  pk,
+  { beginsWith, limit, lastKey, filterExpression, expressionValues, expressionNames, scanForward } = {}
+) => {
   const params = {
     TableName: tableName,
-    FilterExpression: '#field = :value',
-    ExpressionAttributeNames: {
-      '#field': field
-    },
-    ExpressionAttributeValues: {
-      ':value': value
-    },
-    ExclusiveStartKey: startKey,
-    Limit: limit
+    KeyConditionExpression: beginsWith ? 'pk = :pk AND begins_with(sk, :skPrefix)' : 'pk = :pk',
+    ExpressionAttributeValues: beginsWith
+      ? { ':pk': pk, ':skPrefix': beginsWith, ...(expressionValues || {}) }
+      : { ':pk': pk, ...(expressionValues || {}) },
+    ExpressionAttributeNames: expressionNames,
+    Limit: limit,
+    ExclusiveStartKey: lastKey,
+    ScanIndexForward: scanForward
   };
 
-  const result = await commands.scan(params);
+  if (filterExpression) {
+    params.FilterExpression = filterExpression;
+  }
+
+  const result = await commands.query(params);
   return {
     items: result.Items || [],
     lastKey: result.LastEvaluatedKey
   };
 };
 
+const queryByIndex = async (
+  tableName,
+  indexName,
+  partitionKey,
+  { beginsWith, limit, lastKey, filterExpression, expressionValues, expressionNames } = {}
+) => {
+  const params = {
+    TableName: tableName,
+    IndexName: indexName,
+    KeyConditionExpression: beginsWith ? '#pk = :pk AND begins_with(#sk, :skPrefix)' : '#pk = :pk',
+    ExpressionAttributeNames: {
+      '#pk': indexName === 'entityType-index' ? 'entityType' : indexName === 'email-index' ? 'email' : 'slug',
+      ...(beginsWith ? { '#sk': 'sk' } : {}),
+      ...(expressionNames || {})
+    },
+    ExpressionAttributeValues: beginsWith
+      ? { ':pk': partitionKey, ':skPrefix': beginsWith, ...(expressionValues || {}) }
+      : { ':pk': partitionKey, ...(expressionValues || {}) },
+    Limit: limit,
+    ExclusiveStartKey: lastKey
+  };
+
+  if (filterExpression) {
+    params.FilterExpression = filterExpression;
+  }
+
+  const result = await commands.query(params);
+  return {
+    items: result.Items || [],
+    lastKey: result.LastEvaluatedKey
+  };
+};
+
+const queryByEntityType = async (tableName, entityType, options) =>
+  queryByIndex(tableName, 'entityType-index', entityType, options);
+
+const queryByEmail = async (tableName, email, options) =>
+  queryByIndex(tableName, 'email-index', email, options);
+
+const queryBySlug = async (tableName, slug, options) => queryByIndex(tableName, 'slug-index', slug, options);
+
 module.exports = {
   createItem,
-  getById,
-  updateById,
-  deleteById,
-  scanAll,
-  scanByField
+  getItem,
+  updateItem,
+  deleteItem,
+  queryByPk,
+  queryByEntityType,
+  queryByEmail,
+  queryBySlug
 };

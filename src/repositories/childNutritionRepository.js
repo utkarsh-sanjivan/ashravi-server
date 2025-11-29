@@ -1,9 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildChildNutritionKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
-
-const tableName = tables.childNutrition;
 const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
 const createNutritionRecord = async (data) => {
@@ -13,9 +12,11 @@ const createNutritionRecord = async (data) => {
     throw error;
   }
 
+  const id = data.id || uuidv4();
   const payload = {
     ...data,
-    id: data.id || uuidv4(),
+    ...buildChildNutritionKeys(data.childId, id),
+    id,
     records: data.records || [],
     recommendations: data.recommendations || [],
     createdAt: data.createdAt || new Date().toISOString(),
@@ -28,18 +29,38 @@ const createNutritionRecord = async (data) => {
 };
 
 const getNutritionRecord = async (recordId) => {
-  const record = await dynamoRepository.getById(tableName, recordId);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'child_nutrition', {
+    filterExpression: '#id = :id',
+    expressionNames: { '#id': 'id' },
+    expressionValues: { ':id': recordId },
+    limit: 1
+  });
+  const record = items?.[0];
   return format(record);
 };
 
 const getByChildId = async (childId) => {
-  const { items } = await dynamoRepository.scanByField(tableName, 'childId', childId);
+  const { items } = await dynamoRepository.queryByPk(tableName, `CHILD#${childId}`, {
+    beginsWith: 'NUT#',
+    scanForward: false
+  });
   const sorted = (items || []).sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
   return format(sorted[0] || null);
 };
 
 const updateNutritionRecord = async (recordId, data) => {
-  const updated = await dynamoRepository.updateById(tableName, recordId, data);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'child_nutrition', {
+    filterExpression: '#id = :id',
+    expressionNames: { '#id': 'id' },
+    expressionValues: { ':id': recordId },
+    limit: 1
+  });
+  const record = items?.[0];
+  if (!record) {
+    logger.warn('Nutrition record not found for update', { recordId });
+    return null;
+  }
+  const updated = await dynamoRepository.updateItem(tableName, record.pk, record.sk, data);
   if (!updated) {
     logger.warn('Nutrition record not found for update', { recordId });
     return null;
@@ -48,7 +69,16 @@ const updateNutritionRecord = async (recordId, data) => {
 };
 
 const deleteNutritionRecord = async (recordId) => {
-  await dynamoRepository.deleteById(tableName, recordId);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'child_nutrition', {
+    filterExpression: '#id = :id',
+    expressionNames: { '#id': 'id' },
+    expressionValues: { ':id': recordId },
+    limit: 1
+  });
+  const record = items?.[0];
+  if (record) {
+    await dynamoRepository.deleteItem(tableName, record.pk, record.sk);
+  }
   return true;
 };
 
@@ -57,7 +87,7 @@ const addNutritionEntry = async (childId, nutritionEntry) => {
   if (!record) return null;
 
   const updatedRecords = [...(record.records || []), { ...nutritionEntry, recordedAt: new Date().toISOString() }];
-  const updated = await dynamoRepository.updateById(tableName, record.id, {
+  const updated = await dynamoRepository.updateItem(tableName, record.pk, record.sk, {
     records: updatedRecords,
     updatedAt: new Date().toISOString()
   });

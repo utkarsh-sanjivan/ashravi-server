@@ -1,19 +1,23 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildCourseProgressKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.courseProgress;
 const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
 const getOrCreateProgress = async (userId, courseId) => {
-  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const { items } = await dynamoRepository.queryByPk(tableName, `USER#${userId}`, {
+    beginsWith: `COURSE_PROGRESS#${courseId}`
+  });
   const existing = (items || []).find((i) => i.courseId === courseId);
 
   if (existing) return format(existing);
 
+  const id = uuidv4();
   const payload = {
-    id: uuidv4(),
+    id,
+    ...buildCourseProgressKeys(userId, courseId, id),
     userId,
     courseId,
     sections: [],
@@ -29,13 +33,15 @@ const getOrCreateProgress = async (userId, courseId) => {
 };
 
 const getUserCourseProgress = async (userId, courseId) => {
-  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const { items } = await dynamoRepository.queryByPk(tableName, `USER#${userId}`, {
+    beginsWith: `COURSE_PROGRESS#${courseId}`
+  });
   const progress = (items || []).find((i) => i.courseId === courseId);
   return format(progress || null);
 };
 
 const getUserProgress = async (userId, limit = 100) => {
-  const { items } = await dynamoRepository.scanByField(tableName, 'userId', userId);
+  const { items } = await dynamoRepository.queryByPk(tableName, `USER#${userId}`);
   const sorted = (items || []).sort(
     (a, b) => new Date(b.lastAccessedAt || 0) - new Date(a.lastAccessedAt || 0)
   );
@@ -45,7 +51,8 @@ const getUserProgress = async (userId, limit = 100) => {
 const updateCourseProgress = async (userId, courseId, data) => {
   const progress = await getUserCourseProgress(userId, courseId);
   if (!progress) return null;
-  const updated = await dynamoRepository.updateById(tableName, progress.id, data);
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, data);
   return format(updated);
 };
 
@@ -63,7 +70,8 @@ const updateVideoProgress = async (userId, courseId, sectionId, videoId, watched
         }
       : s
   );
-  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     sections: updatedSections,
     lastAccessedAt: new Date().toISOString()
   });
@@ -84,7 +92,8 @@ const updateTestProgress = async (userId, courseId, sectionId, testId, score, pa
         }
       : s
   );
-  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     sections: updatedSections,
     lastAccessedAt: new Date().toISOString()
   });
@@ -101,7 +110,8 @@ const calculateOverallProgress = async (userId, courseId, totalVideos = 0, total
   const testProgress = totalTests > 0 ? (testsCompleted / totalTests) * 100 : 0;
   const overallProgress = Math.min(100, Math.round((videoProgress + testProgress) / 2));
   const isCompleted = overallProgress >= 100;
-  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     overallProgress,
     isCompleted,
     lastAccessedAt: new Date().toISOString()
@@ -112,7 +122,8 @@ const calculateOverallProgress = async (userId, courseId, totalVideos = 0, total
 const updateCourseNotes = async (userId, courseId, notes) => {
   const progress = await getUserCourseProgress(userId, courseId);
   if (!progress) return null;
-  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     notes,
     updatedAt: new Date().toISOString()
   });
@@ -122,7 +133,8 @@ const updateCourseNotes = async (userId, courseId, notes) => {
 const issueCertificate = async (userId, courseId) => {
   const progress = await getUserCourseProgress(userId, courseId);
   if (!progress) return null;
-  const updated = await dynamoRepository.updateById(tableName, progress.id, {
+  const { pk, sk } = buildCourseProgressKeys(userId, courseId, progress.id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     certificateIssued: true,
     certificateIssuedAt: new Date().toISOString()
   });
@@ -130,7 +142,15 @@ const issueCertificate = async (userId, courseId) => {
 };
 
 const deleteProgress = async (id) => {
-  await dynamoRepository.deleteById(tableName, id);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'course_progress', {
+    filterExpression: '#id = :id',
+    expressionNames: { '#id': 'id' },
+    expressionValues: { ':id': id },
+    limit: 1
+  });
+  const progress = items?.[0];
+  if (!progress) return true;
+  await dynamoRepository.deleteItem(tableName, progress.pk, progress.sk);
   return true;
 };
 

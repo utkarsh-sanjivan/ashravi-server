@@ -1,17 +1,19 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildCourseKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.courses;
 const IMMUTABLE_FIELDS = new Set(['id', 'createdAt', 'slug', 'enrollmentCount']);
 
 const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
 const createCourse = async (data) => {
+  const id = data.id || uuidv4();
   const payload = {
     ...data,
-    id: data.id || uuidv4(),
+    id,
+    ...buildCourseKeys(id),
     enrollmentCount: data.enrollmentCount || 0,
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || new Date().toISOString()
@@ -22,25 +24,31 @@ const createCourse = async (data) => {
 };
 
 const getCourse = async (courseId) => {
-  const course = await dynamoRepository.getById(tableName, courseId);
+  const { pk, sk } = buildCourseKeys(courseId);
+  const course = await dynamoRepository.getItem(tableName, pk, sk);
   return format(course);
 };
 
 const getCourseBySlug = async (slug) => {
-  const { items } = await dynamoRepository.scanByField(tableName, 'slug', slug);
-  return format(items[0] || null);
+  const { items } = await dynamoRepository.queryBySlug(tableName, slug, {
+    filterExpression: '#et = :type',
+    expressionNames: { '#et': 'entityType' },
+    expressionValues: { ':type': 'course' },
+    limit: 1
+  });
+  return format(items?.[0] || null);
 };
 
 const getCoursesByIds = async (ids = [], onlyPublished = false) => {
   if (!Array.isArray(ids) || ids.length === 0) return [];
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'course');
   const map = new Map((items || []).map((i) => [i.id, i]));
   const filtered = ids.map((id) => map.get(id)).filter(Boolean);
   return (onlyPublished ? filtered.filter((c) => c.isPublished) : filtered).map(format);
 };
 
 const getCourses = async (filters = {}, page = 1, limit = 20, sort = { createdAt: -1 }) => {
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'course');
   let list = items || [];
 
   if (filters.category) list = list.filter((c) => c.category === filters.category);
@@ -95,19 +103,22 @@ const updateCourse = async (courseId, data) => {
       sanitized[key] = value;
     }
   });
-  const updated = await dynamoRepository.updateById(tableName, courseId, sanitized);
+  const { pk, sk } = buildCourseKeys(courseId);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, sanitized);
   return format(updated);
 };
 
 const deleteCourse = async (courseId) => {
-  await dynamoRepository.deleteById(tableName, courseId);
+  const { pk, sk } = buildCourseKeys(courseId);
+  await dynamoRepository.deleteItem(tableName, pk, sk);
   return true;
 };
 
 const incrementEnrollment = async (courseId) => {
-  const course = await dynamoRepository.getById(tableName, courseId);
+  const { pk, sk } = buildCourseKeys(courseId);
+  const course = await dynamoRepository.getItem(tableName, pk, sk);
   if (!course) return null;
-  const updated = await dynamoRepository.updateById(tableName, courseId, {
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, {
     enrollmentCount: (course.enrollmentCount || 0) + 1
   });
   return format(updated);

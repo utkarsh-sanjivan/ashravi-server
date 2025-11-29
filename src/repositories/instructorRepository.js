@@ -1,18 +1,20 @@
 const { v4: uuidv4 } = require('uuid');
-const { tables } = require('../config/dynamoConfig');
+const { tableName } = require('../config/dynamoConfig');
 const dynamoRepository = require('./dynamoRepository');
+const { buildInstructorKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
 
-const tableName = tables.instructors;
 const IMMUTABLE_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'email']);
 
 const format = (doc) => (doc ? { ...doc, _id: doc.id } : null);
 
 const createInstructor = async (data) => {
   try {
+    const id = data.id || uuidv4();
     const payload = {
       ...data,
-      id: data.id || uuidv4(),
+      ...buildInstructorKeys(id),
+      id,
       email: data.email?.toLowerCase().trim(),
       isActive: data.isActive !== undefined ? data.isActive : true,
       createdAt: data.createdAt || new Date().toISOString(),
@@ -28,19 +30,25 @@ const createInstructor = async (data) => {
 };
 
 const getInstructorById = async (id) => {
-  const instructor = await dynamoRepository.getById(tableName, id);
+  const { pk, sk } = buildInstructorKeys(id);
+  const instructor = await dynamoRepository.getItem(tableName, pk, sk);
   return format(instructor);
 };
 
 const getInstructorByEmail = async (email) => {
   if (!email) return null;
   const normalized = email.toLowerCase().trim();
-  const { items } = await dynamoRepository.scanByField(tableName, 'email', normalized);
-  return format(items[0] || null);
+  const { items } = await dynamoRepository.queryByEmail(tableName, normalized, {
+    filterExpression: '#et = :type',
+    expressionNames: { '#et': 'entityType' },
+    expressionValues: { ':type': 'instructor' },
+    limit: 1
+  });
+  return format(items?.[0] || null);
 };
 
 const getInstructors = async (filters = {}, page = 1, limit = 20, sort = { createdAt: -1 }) => {
-  const { items } = await dynamoRepository.scanAll(tableName);
+  const { items } = await dynamoRepository.queryByEntityType(tableName, 'instructor');
   let list = items || [];
 
   if (filters.isActive !== undefined) list = list.filter((i) => i.isActive === filters.isActive);
@@ -89,12 +97,14 @@ const updateInstructor = async (id, data) => {
       delete data[key];
     }
   });
-  const updated = await dynamoRepository.updateById(tableName, id, data);
+  const { pk, sk } = buildInstructorKeys(id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, data);
   return format(updated);
 };
 
 const deleteInstructor = async (id) => {
-  const updated = await dynamoRepository.updateById(tableName, id, { isActive: false });
+  const { pk, sk } = buildInstructorKeys(id);
+  const updated = await dynamoRepository.updateItem(tableName, pk, sk, { isActive: false });
   return !!updated;
 };
 
