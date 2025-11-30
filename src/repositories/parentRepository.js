@@ -81,6 +81,17 @@ const createParent = async (parentData) => {
 };
 
 const getParent = async (parentId) => {
+  try {
+    const { pk, sk } = buildParentKeys(parentId);
+    const item = await dynamoRepository.getItem(tableName, pk, sk);
+    if (item) {
+      return attachHelpers(item);
+    }
+  } catch (error) {
+    // Fallback to scan if table schema differs
+    const item = await dynamoRepository.findItemById(tableName, parentId);
+    return attachHelpers(item);
+  }
   const item = await dynamoRepository.findItemById(tableName, parentId);
   return attachHelpers(item);
 };

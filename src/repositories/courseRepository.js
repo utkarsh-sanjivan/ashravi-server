@@ -24,8 +24,15 @@ const createCourse = async (data) => {
 };
 
 const getCourse = async (courseId) => {
-  const course = await dynamoRepository.findItemById(tableName, courseId);
-  return format(course);
+  try {
+    const { pk, sk } = buildCourseKeys(courseId);
+    const course = await dynamoRepository.getItem(tableName, pk, sk);
+    return format(course);
+  } catch (error) {
+    // Fallback to scan if the table schema differs (e.g., missing sort key)
+    const course = await dynamoRepository.findItemById(tableName, courseId);
+    return format(course);
+  }
 };
 
 const getCourseBySlug = async (slug) => {
