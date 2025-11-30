@@ -1,11 +1,34 @@
 const Joi = require('joi');
 
+const parentIdSchema = Joi.string()
+  .custom((value, helpers) => {
+    const isObjectId = /^[a-fA-F0-9]{24}$/.test(value);
+    const isUuid = Joi.string().guid({ version: ['uuidv4', 'uuidv5', 'uuidv1', 'uuidv3'] }).validate(value).error === undefined;
+    if (isObjectId || isUuid) return value;
+    return helpers.error('any.invalid');
+  })
+  .messages({
+    'any.invalid': 'Invalid parent ID format',
+    'any.required': 'Parent ID is required'
+  })
+  .required();
+
+const courseIdSchema = Joi.string()
+  .custom((value, helpers) => {
+    const isObjectId = /^[a-fA-F0-9]{24}$/.test(value);
+    const isUuid = Joi.string().guid({ version: ['uuidv4', 'uuidv5', 'uuidv1', 'uuidv3'] }).validate(value).error === undefined;
+    if (isObjectId || isUuid) return value;
+    return helpers.error('any.invalid');
+  })
+  .messages({
+    'any.invalid': 'Invalid course ID format',
+    'any.required': 'Course ID is required'
+  })
+  .required();
+
 const parentValidation = {
   idParam: Joi.object({
-    id: Joi.string().length(24).required().messages({
-      'string.length': 'Invalid parent ID format',
-      'any.required': 'Parent ID is required'
-    })
+    id: parentIdSchema
   }),
 
   cityParam: Joi.object({
@@ -21,26 +44,17 @@ const parentValidation = {
   }),
 
   removeChildParams: Joi.object({
-    id: Joi.string().length(24).required(),
+    id: parentIdSchema,
     childId: Joi.string().length(24).required()
   }),
 
   wishlistBody: Joi.object({
-    courseId: Joi.string().length(24).required().messages({
-      'string.length': 'Invalid course ID format',
-      'any.required': 'Course ID is required'
-    })
+    courseId: courseIdSchema
   }),
 
   wishlistParams: Joi.object({
-    id: Joi.string().length(24).required().messages({
-      'string.length': 'Invalid parent ID format',
-      'any.required': 'Parent ID is required'
-    }),
-    courseId: Joi.string().length(24).required().messages({
-      'string.length': 'Invalid course ID format',
-      'any.required': 'Course ID is required'
-    })
+    id: parentIdSchema,
+    courseId: courseIdSchema
   })
 };
 
