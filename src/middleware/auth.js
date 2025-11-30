@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const parentRepository = require('../repositories/parentRepository');
 const logger = require('../utils/logger');
+const { JWT_SECRET } = require('../config/jwtConfig');
 
 /*
  * Verify JWT token and authenticate parent
@@ -30,7 +31,7 @@ const auth = async (req, res, next) => {
     }
 
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     // Find parent by ID from token
     const parent = await parentRepository.getParent(decoded.id);
@@ -136,7 +137,7 @@ const optionalAuth = async (req, res, next) => {
       token = token.slice(7);
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     const parent = await parentRepository.getParent(decoded.id);
 
     if (parent && parent.isActive) {

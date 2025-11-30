@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { tableName } = require('../config/dynamoConfig');
+const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/jwtConfig');
 const dynamoRepository = require('./dynamoRepository');
 const { buildParentKeys } = require('./keyFactory');
 const logger = require('../utils/logger');
@@ -15,11 +16,11 @@ const attachHelpers = (item) => {
     _id: item.id,
     comparePassword: async (candidate) => bcrypt.compare(candidate, item.password || ''),
     getSignedJwtToken: () =>
-      jwt.sign({ id: item.id, email: item.email, role: 'parent' }, process.env.JWT_SECRET, {
+      jwt.sign({ id: item.id, email: item.email, role: 'parent' }, JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRES_IN || '7d'
       }),
     generateRefreshToken: () =>
-      jwt.sign({ id: item.id, type: 'refresh' }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
+      jwt.sign({ id: item.id, type: 'refresh' }, JWT_REFRESH_SECRET, {
         expiresIn: '30d'
       }),
     getPublicProfile: () => ({
