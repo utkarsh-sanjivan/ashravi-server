@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const parentRepository = require('../repositories/parentRepository');
+const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/jwtConfig');
 
 /*
  * Register a new parent
@@ -273,10 +274,7 @@ const changePassword = async (parentId, currentPassword, newPassword) => {
  */
 const refresh = async (refreshToken) => {
   try {
-    const decoded = jwt.verify(
-      refreshToken, 
-      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET
-    );
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
 
     const parent = await parentRepository.getParent(decoded.id);
 
@@ -343,7 +341,7 @@ const refresh = async (refreshToken) => {
  */
 const verify = async (token) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     const parent = await parentRepository.getParent(decoded.id);
 
