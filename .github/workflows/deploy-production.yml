@@ -47,57 +47,88 @@ jobs:
       - name: Build Docker image
         env:
           DOCKER_BUILDKIT: 1
-        run: docker build --platform linux/amd64 -t ${{ steps.image.outputs.image_uri }} .
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t "${{ steps.image.outputs.image_uri }}" \
+            .
       - name: Tag image as latest
         run: |
-          docker tag ${{ steps.image.outputs.image_uri }} ${{ secrets.ECR_REPO_PRODUCTION }}:latest
+          docker tag \
+            "${{ steps.image.outputs.image_uri }}" \
+            "${{ secrets.ECR_REPO_PRODUCTION }}:latest"
       - name: Push images to ECR
         run: |
-          docker push ${{ steps.image.outputs.image_uri }}
-          docker push ${{ secrets.ECR_REPO_PRODUCTION }}:latest
+          docker push "${{ steps.image.outputs.image_uri }}"
+          docker push "${{ secrets.ECR_REPO_PRODUCTION }}:latest"
       - name: Register new task definition revision
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
           ECS_SERVICE: ${{ secrets.ECS_SERVICE_PRODUCTION }}
           IMAGE_URI: ${{ steps.image.outputs.image_uri }}
         run: |
-          BASE_TASK_DEF=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
-          TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition "$BASE_TASK_DEF" --query 'taskDefinition')
+          set -euo pipefail
+
+          BASE_TASK_DEF=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          TASK_DEF_JSON=$(aws ecs describe-task-definition \
+            --task-definition "$BASE_TASK_DEF" \
+            --query 'taskDefinition' \
+            --output json)
+
           UPDATED_TASK_DEF=$(echo "$TASK_DEF_JSON" | jq --arg IMAGE "$IMAGE_URI" '
             .containerDefinitions[0].image = $IMAGE
             | {
-              family,
-              taskRoleArn,
-              executionRoleArn,
-              networkMode,
-              containerDefinitions,
-              volumes,
-              placementConstraints,
-              requiresCompatibilities,
-              cpu,
-              memory,
-              pidMode,
-              ipcMode,
-              proxyConfiguration,
-              inferenceAccelerators,
-              ephemeralStorage,
-              runtimePlatform
-            }
+                family,
+                taskRoleArn,
+                executionRoleArn,
+                networkMode,
+                containerDefinitions,
+                volumes,
+                placementConstraints,
+                requiresCompatibilities,
+                cpu,
+                memory,
+                pidMode,
+                ipcMode,
+                proxyConfiguration,
+                inferenceAccelerators,
+                ephemeralStorage,
+                runtimePlatform
+              }
+            | with_entries(select(.value != null))
           ')
+
           echo "$UPDATED_TASK_DEF" > /tmp/task-def.json
-          REGISTERED=$(aws ecs register-task-definition --cli-input-json file:///tmp/task-def.json)
-          NEW_REVISION=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
-          echo "new_task_def_arn=$NEW_REVISION" >> $GITHUB_ENV
+
+          REGISTERED=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-def.json)
+
+          NEW_REVISION_ARN=$(echo "$REGISTERED" | jq -r '.taskDefinition.taskDefinitionArn')
+
+          echo "NEW_TASK_DEF_ARN=$NEW_REVISION_ARN" >> "$GITHUB_ENV"
+          echo "Registered new task definition: $NEW_REVISION_ARN"
       - name: Force ECS deployment
         env:
           ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
           ECS_SERVICE: ${{ secrets.ECS_SERVICE_PRODUCTION }}
         run: |
+          set -euo pipefail
+
+          echo "Updating service $ECS_SERVICE to use: $NEW_TASK_DEF_ARN"
+
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_DEF_ARN" \
             --force-new-deployment
+
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
+
+          echo "Service is stable with new task definition."
