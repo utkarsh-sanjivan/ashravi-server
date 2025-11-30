@@ -38,6 +38,20 @@ const sectionSchema = Joi.object({
   isLocked: Joi.boolean().default(false)
 });
 
+const idOrUuid = Joi.string()
+  .custom((value, helpers) => {
+    const isObjectId = /^[a-fA-F0-9]{24}$/.test(value);
+    const isUuid =
+      Joi.string().guid({ version: ['uuidv4', 'uuidv5', 'uuidv1', 'uuidv3'] }).validate(value).error === undefined;
+    if (isObjectId || isUuid) return value;
+    return helpers.error('any.invalid');
+  })
+  .messages({
+    'any.invalid': 'Invalid ID format',
+    'any.required': 'ID is required'
+  })
+  .required();
+
 const courseValidation = {
   create: Joi.object({
     title: Joi.string().min(5).max(200).required(),
@@ -102,17 +116,17 @@ const courseValidation = {
     search: Joi.string(),
     sortBy: Joi.string().valid('createdAt', 'updatedAt', 'enrollmentCount', 'title').default('createdAt'),
     sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
-    parentId: Joi.string().length(24)
+    parentId: idOrUuid.optional()
   }),
   updateVideoProgress: Joi.object({
-    sectionId: Joi.string().length(24).required(),
-    videoId: Joi.string().length(24).required(),
+    sectionId: idOrUuid,
+    videoId: idOrUuid,
     watchedDuration: Joi.number().min(0).required(),
     totalDuration: Joi.number().min(0).required()
   }),
   updateTestProgress: Joi.object({
-    sectionId: Joi.string().length(24).required(),
-    testId: Joi.string().length(24).required(),
+    sectionId: idOrUuid,
+    testId: idOrUuid,
     score: Joi.number().min(0).max(100).required(),
     passingScore: Joi.number().min(0).max(100).default(70)
   }),
@@ -133,16 +147,16 @@ const courseValidation = {
     })
   }),
   sectionPdfParams: Joi.object({
-    courseId: Joi.string().length(24).required(),
-    sectionId: Joi.string().length(24).required()
+    courseId: idOrUuid,
+    sectionId: idOrUuid
   }),
   removePdfParams: Joi.object({
-    courseId: Joi.string().length(24).required(),
-    sectionId: Joi.string().length(24).required(),
-    pdfId: Joi.string().length(24).required()
+    courseId: idOrUuid,
+    sectionId: idOrUuid,
+    pdfId: idOrUuid
   }),
   idParam: Joi.object({
-    id: Joi.string().length(24).required()
+    id: idOrUuid
   }),
   slugParam: Joi.object({
     slug: Joi.string().required()

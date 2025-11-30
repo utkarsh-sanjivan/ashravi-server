@@ -24,8 +24,7 @@ const createCourse = async (data) => {
 };
 
 const getCourse = async (courseId) => {
-  const { pk, sk } = buildCourseKeys(courseId);
-  const course = await dynamoRepository.getItem(tableName, pk, sk);
+  const course = await dynamoRepository.findItemById(tableName, courseId);
   return format(course);
 };
 

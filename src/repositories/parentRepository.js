@@ -38,8 +38,13 @@ const attachHelpers = (item) => {
       lastLogin: item.lastLogin
     }),
     save: async () => {
-      const toPersist = { ...item };
-      const persisted = await dynamoRepository.updateById(tableName, item.id, toPersist);
+      const toPersist = dynamoRepository.sanitizeForDynamo({
+        ...item,
+        ...buildParentKeys(item.id),
+        id: item.id
+      });
+
+      const persisted = await dynamoRepository.putItem(tableName, toPersist);
       return attachHelpers(persisted);
     },
     markModified: () => {}
@@ -76,8 +81,7 @@ const createParent = async (parentData) => {
 };
 
 const getParent = async (parentId) => {
-  const { pk, sk } = buildParentKeys(parentId);
-  const item = await dynamoRepository.getItem(tableName, pk, sk);
+  const item = await dynamoRepository.findItemById(tableName, parentId);
   return attachHelpers(item);
 };
 
@@ -121,6 +125,11 @@ const updateParent = async (parentId, updateData) => {
     return getParent(parentId);
   }
 
+  const existing = await dynamoRepository.findItemById(tableName, parentId);
+  if (!existing) {
+    return null;
+  }
+
   const sanitized = {};
   Object.entries(updateData).forEach(([key, value]) => {
     if (!IMMUTABLE_FIELDS.has(key) && value !== undefined) {
@@ -132,9 +141,14 @@ const updateParent = async (parentId, updateData) => {
     sanitized.password = await bcrypt.hash(sanitized.password, 12);
   }
 
-  const { pk, sk } = buildParentKeys(parentId);
-  const updated = await dynamoRepository.updateItem(tableName, pk, sk, sanitized);
-  return attachHelpers(updated);
+  const merged = {
+    ...existing,
+    ...sanitized,
+    updatedAt: new Date().toISOString()
+  };
+
+  const persisted = await dynamoRepository.putItem(tableName, dynamoRepository.sanitizeForDynamo(merged));
+  return attachHelpers(persisted);
 };
 
 const deleteParent = async (parentId) => {
